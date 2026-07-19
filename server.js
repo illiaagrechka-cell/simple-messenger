@@ -162,7 +162,7 @@ app.post('/api/messages', requireAuth, (req, res) => {
   }
 
   const messages = readJson(MESSAGES_FILE);
-  const msg = { from: req.username, to: recipient, text: content, time: Date.now() };
+  const msg = { id: crypto.randomBytes(8).toString('hex'), from: req.username, to: recipient, text: content, time: Date.now() };
   messages.push(msg);
   writeJson(MESSAGES_FILE, messages);
   res.json(msg);
@@ -177,6 +177,33 @@ app.get('/api/messages/:withUser', requireAuth, (req, res) => {
     (m.from === other && m.to === req.username)
   );
   res.json(thread);
+});
+
+// --- Удаление одного сообщения (для всех) — может только автор сообщения ---
+app.delete('/api/messages/single/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const messages = readJson(MESSAGES_FILE);
+  const msg = messages.find(m => m.id === id);
+  if (!msg) {
+    return res.status(404).json({ error: 'Сообщение не найдено.' });
+  }
+  if (msg.from !== req.username) {
+    return res.status(403).json({ error: 'Удалить можно только своё сообщение.' });
+  }
+  const updated = messages.filter(m => m.id !== id);
+  writeJson(MESSAGES_FILE, updated);
+  res.json({ deleted: id });
+});
+
+// --- Удаление всего чата с конкретным пользователем (для всех) ---
+app.delete('/api/conversations/:withUser', requireAuth, (req, res) => {
+  const other = (req.params.withUser || '').trim().toLowerCase();
+  const messages = readJson(MESSAGES_FILE);
+  const updated = messages.filter(m =>
+    !((m.from === req.username && m.to === other) || (m.from === other && m.to === req.username))
+  );
+  writeJson(MESSAGES_FILE, updated);
+  res.json({ deletedWith: other });
 });
 
 app.listen(PORT, () => {
