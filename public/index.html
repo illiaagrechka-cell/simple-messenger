@@ -6,58 +6,144 @@
 <title>Простой мессенджер</title>
 <style>
   * { box-sizing: border-box; }
+  html, body {
+    min-height: 100%;
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    background: #f4f4f2;
     margin: 0;
     padding: 0;
-    color: #222;
+    color: #24163a;
+    background: linear-gradient(160deg, #ff9de2 0%, #a78bfa 42%, #60a5fa 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
-  .wrap { max-width: 420px; margin: 0 auto; padding: 2rem 1rem; min-height: 100vh; }
-  h1 { font-size: 20px; font-weight: 600; margin: 0 0 1.5rem; }
+
+  .site-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    color: #fff;
+  }
+  .logo-badge {
+    width: 42px; height: 42px; border-radius: 14px;
+    background: linear-gradient(135deg, #ffd166, #ff6fb0);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+  }
+  .logo-badge svg { width: 24px; height: 24px; }
+  .site-title { font-size: 19px; font-weight: 800; letter-spacing: 0.01em; text-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+  .site-subtitle { font-size: 12px; opacity: 0.85; margin-top: -2px; }
+
+  .wrap { max-width: 440px; margin: 0 auto; padding: 0.5rem 1rem 3rem; min-height: 60vh; }
+
+  .card {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 35px rgba(60, 20, 90, 0.25);
+  }
+
+  h1 { font-size: 21px; font-weight: 800; margin: 0 0 1.25rem; color: #3d1e6d; }
   input {
-    width: 100%; padding: 10px 12px; margin-bottom: 10px;
-    border: 1px solid #ccc; border-radius: 8px; font-size: 15px;
+    width: 100%; padding: 11px 14px; margin-bottom: 12px;
+    border: 2px solid #eee0fb; border-radius: 12px; font-size: 15px;
+    background: #fbf7ff;
+    outline: none;
+    transition: border-color 0.15s;
   }
+  input:focus { border-color: #b57bff; }
   button {
-    width: 100%; padding: 10px 12px; border: none; border-radius: 8px;
-    background: #222; color: #fff; font-size: 15px; cursor: pointer;
+    width: 100%; padding: 11px 14px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #a259ff, #ff6fb0);
+    color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(162, 89, 255, 0.35);
+    transition: transform 0.1s, box-shadow 0.1s;
   }
-  button.secondary { background: #eee; color: #222; }
-  button:active { opacity: 0.85; }
-  .error { color: #b3261e; font-size: 13px; margin-top: 6px; }
+  button:hover { box-shadow: 0 6px 18px rgba(162, 89, 255, 0.45); }
+  button:active { transform: scale(0.97); }
+  button.secondary {
+    background: #f1e9ff; color: #6b3fa0; box-shadow: none;
+  }
+  .error { color: #d6336c; font-size: 13px; margin-top: 6px; font-weight: 600; }
   .row { display: flex; gap: 8px; }
-  .row input { flex: 1; }
-  .row button { width: auto; padding: 10px 16px; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-  .topbar button { width: auto; padding: 6px 12px; font-size: 13px; }
-  .muted { color: #777; font-size: 13px; }
+  .row input { flex: 1; margin-bottom: 0; }
+  .row button { width: auto; padding: 11px 18px; white-space: nowrap; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.1rem; }
+  .topbar button { width: auto; padding: 7px 14px; font-size: 13px; }
+  .muted { color: #8b7aa8; font-size: 13px; }
   .chat-box {
-    background: #fff; border: 1px solid #e0e0e0; border-radius: 12px;
+    background: linear-gradient(180deg, #fdf6ff, #f3e8ff);
+    border-radius: 18px;
     padding: 1rem; margin-top: 1rem;
+    box-shadow: inset 0 0 0 2px #eee0fb;
   }
   .messages {
     display: flex; flex-direction: column; gap: 8px;
     max-height: 340px; overflow-y: auto; margin-bottom: 10px;
+    padding-right: 4px;
   }
   .msg { max-width: 75%; }
   .msg.mine { align-self: flex-end; }
   .bubble {
-    padding: 6px 10px; border-radius: 8px; font-size: 14px;
-    background: #eee;
+    padding: 8px 12px; border-radius: 14px; font-size: 14px;
+    background: #fff; color: #3d1e6d;
+    box-shadow: 0 2px 6px rgba(60,20,90,0.08);
   }
-  .msg.mine .bubble { background: #dbe9ff; }
-  .time { font-size: 11px; color: #999; margin-top: 2px; }
+  .msg.mine .bubble {
+    background: linear-gradient(135deg, #a259ff, #ff6fb0);
+    color: #fff;
+  }
+  .time { font-size: 11px; color: #a993c4; margin-top: 3px; }
   .msg.mine .time { text-align: right; }
   .userlist { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .userlist span {
-    padding: 4px 10px; border-radius: 999px; background: #eee;
-    font-size: 13px; cursor: pointer;
+    padding: 5px 12px; border-radius: 999px;
+    background: #f1e9ff; color: #6b3fa0;
+    font-size: 13px; cursor: pointer; font-weight: 600;
   }
-  a.toggle { display:block; text-align:center; margin-top:10px; font-size:13px; color:#555; cursor:pointer; }
+  .userlist span:hover { background: #e4d3ff; }
+  .section-title {
+    font-size: 12px; color: #f1e6ff; margin: 0 0 8px 4px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .conv-list { display: flex; flex-direction: column; gap: 6px; }
+  .conv-item {
+    background: #fff; border-radius: 14px;
+    padding: 10px 14px; cursor: pointer;
+    box-shadow: 0 3px 10px rgba(60,20,90,0.12);
+    border-left: 4px solid #ff8ac4;
+    transition: transform 0.1s;
+  }
+  .conv-item:hover { transform: translateX(2px); background: #fdf6ff; }
+  .conv-name { font-size: 14px; font-weight: 800; color: #3d1e6d; }
+  .conv-preview {
+    font-size: 13px; color: #8b7aa8; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  a.toggle { display:block; text-align:center; margin-top:12px; font-size:13px; color:#7a4fc9; cursor:pointer; font-weight: 600; }
+  .auth-card-wrap { padding-top: 1rem; }
 </style>
 </head>
 <body>
+<div class="site-header">
+  <div class="logo-badge">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 16.5C3 13 6 11 10 11H16C18.5 11 20.5 13 20.5 15.5C20.5 18 18.5 20 16 20H7C4.8 20 3 18.2 3 16.5Z" fill="#5b3a94"/>
+      <path d="M6 11C6 8 8 6 11 6H14C15.5 6 16.5 7 16.5 8.5V11H6Z" fill="#7c4fc9"/>
+      <circle cx="16.5" cy="15.5" r="1.1" fill="#ffd166"/>
+      <circle cx="12.5" cy="15.5" r="1.1" fill="#ffd166"/>
+      <circle cx="8.8" cy="15.5" r="1.1" fill="#ffd166"/>
+    </svg>
+  </div>
+  <div>
+    <div class="site-title">Утюг-чат</div>
+    <div class="site-subtitle">гладим переписку без складок</div>
+  </div>
+</div>
 <div class="wrap" id="app"></div>
 
 <script>
@@ -83,12 +169,16 @@ async function api(path, options = {}) {
 function renderAuth(errorMsg) {
   const isRegister = mode === 'register';
   app.innerHTML = `
-    <h1>${isRegister ? 'Регистрация' : 'Вход'}</h1>
-    <input id="username" placeholder="имя пользователя" autocomplete="username" />
-    <input id="password" type="password" placeholder="пароль" autocomplete="${isRegister ? 'new-password' : 'current-password'}" />
-    <button id="submit-btn">${isRegister ? 'Зарегистрироваться' : 'Войти'}</button>
-    ${errorMsg ? `<div class="error">${esc(errorMsg)}</div>` : ''}
-    <a class="toggle" id="toggle-link">${isRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}</a>
+    <div class="auth-card-wrap">
+      <div class="card">
+        <h1>${isRegister ? 'Регистрация' : 'Вход'}</h1>
+        <input id="username" placeholder="имя пользователя" autocomplete="username" />
+        <input id="password" type="password" placeholder="пароль" autocomplete="${isRegister ? 'new-password' : 'current-password'}" />
+        <button id="submit-btn">${isRegister ? 'Зарегистрироваться' : 'Войти'}</button>
+        ${errorMsg ? `<div class="error">${esc(errorMsg)}</div>` : ''}
+        <a class="toggle" id="toggle-link">${isRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}</a>
+      </div>
+    </div>
   `;
   document.getElementById('toggle-link').onclick = () => { mode = isRegister ? 'login' : 'register'; renderAuth(); };
   document.getElementById('submit-btn').onclick = submitAuth;
@@ -115,16 +205,23 @@ async function submitAuth() {
 
 async function renderMain() {
   app.innerHTML = `
-    <div class="topbar">
-      <span class="muted">Вы вошли как <b>${esc(me)}</b></span>
-      <button id="logout-btn" class="secondary">Выйти</button>
+    <div class="card">
+      <div class="topbar">
+        <span class="muted">Вы вошли как <b style="color:#3d1e6d;">${esc(me)}</b></span>
+        <button id="logout-btn" class="secondary">Выйти</button>
+      </div>
+
+      <div class="section-title" style="color:#8b7aa8;">Чаты</div>
+      <div id="conv-list" class="conv-list"></div>
+
+      <div class="row" style="margin: 1rem 0 6px;">
+        <input id="peer-input" placeholder="имя собеседника" value="${esc(peer)}" />
+        <button id="open-chat-btn">Написать</button>
+      </div>
+      <div id="userlist" class="userlist"></div>
+
+      <div id="chat-area"></div>
     </div>
-    <div class="row" style="margin-bottom: 1rem;">
-      <input id="peer-input" placeholder="имя собеседника" value="${esc(peer)}" />
-      <button id="open-chat-btn">Открыть чат</button>
-    </div>
-    <div id="userlist" class="userlist"></div>
-    <div id="chat-area"></div>
   `;
   document.getElementById('logout-btn').onclick = () => {
     if (pollTimer) clearInterval(pollTimer);
@@ -141,6 +238,8 @@ async function renderMain() {
   };
   document.getElementById('peer-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('open-chat-btn').click(); });
 
+  await loadConversations();
+
   try {
     const users = await api('/api/users');
     const list = document.getElementById('userlist');
@@ -152,6 +251,34 @@ async function renderMain() {
   } catch (e) {}
 
   if (peer) startChat();
+}
+
+async function loadConversations() {
+  const box = document.getElementById('conv-list');
+  if (!box) return;
+  let list = [];
+  try {
+    list = await api('/api/conversations');
+  } catch (e) { return; }
+
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Переписок пока нет — начните новый чат ниже.</div>';
+    return;
+  }
+
+  box.innerHTML = list.map(c => `
+    <div class="conv-item" data-u="${esc(c.username)}">
+      <div class="conv-name">${esc(c.username)}</div>
+      <div class="conv-preview">${c.lastFromMe ? 'Вы: ' : ''}${esc(c.lastText)}</div>
+    </div>
+  `).join('');
+  box.querySelectorAll('.conv-item').forEach(el => {
+    el.onclick = () => {
+      peer = el.getAttribute('data-u');
+      document.getElementById('peer-input').value = peer;
+      startChat();
+    };
+  });
 }
 
 async function startChat() {
@@ -187,6 +314,7 @@ async function loadMessages() {
     </div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
+  loadConversations();
 }
 
 async function sendMessage() {
@@ -197,13 +325,19 @@ async function sendMessage() {
   try {
     await api('/api/messages', { method: 'POST', body: JSON.stringify({ to: peer, text }) });
     await loadMessages();
+    await loadConversations();
   } catch (e) {
     alert(e.message);
   }
 }
 
 if (token && me) {
-  renderMain();
+  api('/api/me').then(() => renderMain()).catch(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('me');
+    token = null; me = null;
+    renderAuth();
+  });
 } else {
   renderAuth();
 }
