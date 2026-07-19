@@ -1,0 +1,12 @@
+{
+  "name": "simple-messenger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Максимально простой мессенджер: регистрация и обмен сообщениями",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

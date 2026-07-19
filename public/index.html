@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Простой мессенджер</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #f4f4f2;
+    margin: 0;
+    padding: 0;
+    color: #222;
+  }
+  .wrap { max-width: 420px; margin: 0 auto; padding: 2rem 1rem; min-height: 100vh; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 1.5rem; }
+  input {
+    width: 100%; padding: 10px 12px; margin-bottom: 10px;
+    border: 1px solid #ccc; border-radius: 8px; font-size: 15px;
+  }
+  button {
+    width: 100%; padding: 10px 12px; border: none; border-radius: 8px;
+    background: #222; color: #fff; font-size: 15px; cursor: pointer;
+  }
+  button.secondary { background: #eee; color: #222; }
+  button:active { opacity: 0.85; }
+  .error { color: #b3261e; font-size: 13px; margin-top: 6px; }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  .row button { width: auto; padding: 10px 16px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .topbar button { width: auto; padding: 6px 12px; font-size: 13px; }
+  .muted { color: #777; font-size: 13px; }
+  .chat-box {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 12px;
+    padding: 1rem; margin-top: 1rem;
+  }
+  .messages {
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 340px; overflow-y: auto; margin-bottom: 10px;
+  }
+  .msg { max-width: 75%; }
+  .msg.mine { align-self: flex-end; }
+  .bubble {
+    padding: 6px 10px; border-radius: 8px; font-size: 14px;
+    background: #eee;
+  }
+  .msg.mine .bubble { background: #dbe9ff; }
+  .time { font-size: 11px; color: #999; margin-top: 2px; }
+  .msg.mine .time { text-align: right; }
+  .userlist { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .userlist span {
+    padding: 4px 10px; border-radius: 999px; background: #eee;
+    font-size: 13px; cursor: pointer;
+  }
+  a.toggle { display:block; text-align:center; margin-top:10px; font-size:13px; color:#555; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const app = document.getElementById('app');
+const API = '';
+let token = localStorage.getItem('token') || null;
+let me = localStorage.getItem('me') || null;
+let peer = '';
+let pollTimer = null;
+let mode = 'login'; // 'login' | 'register'
+
+function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function api(path, options = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API + path, Object.assign({}, options, { headers }));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
+  return data;
+}
+
+function renderAuth(errorMsg) {
+  const isRegister = mode === 'register';
+  app.innerHTML = `
+    <h1>${isRegister ? 'Регистрация' : 'Вход'}</h1>
+    <input id="username" placeholder="имя пользователя" autocomplete="username" />
+    <input id="password" type="password" placeholder="пароль" autocomplete="${isRegister ? 'new-password' : 'current-password'}" />
+    <button id="submit-btn">${isRegister ? 'Зарегистрироваться' : 'Войти'}</button>
+    ${errorMsg ? `<div class="error">${esc(errorMsg)}</div>` : ''}
+    <a class="toggle" id="toggle-link">${isRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}</a>
+  `;
+  document.getElementById('toggle-link').onclick = () => { mode = isRegister ? 'login' : 'register'; renderAuth(); };
+  document.getElementById('submit-btn').onclick = submitAuth;
+  document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+}
+
+async function submitAuth() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    const data = await api(mode === 'register' ? '/api/register' : '/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+    token = data.token;
+    me = data.username;
+    localStorage.setItem('token', token);
+    localStorage.setItem('me', me);
+    renderMain();
+  } catch (e) {
+    renderAuth(e.message);
+  }
+}
+
+async function renderMain() {
+  app.innerHTML = `
+    <div class="topbar">
+      <span class="muted">Вы вошли как <b>${esc(me)}</b></span>
+      <button id="logout-btn" class="secondary">Выйти</button>
+    </div>
+    <div class="row" style="margin-bottom: 1rem;">
+      <input id="peer-input" placeholder="имя собеседника" value="${esc(peer)}" />
+      <button id="open-chat-btn">Открыть чат</button>
+    </div>
+    <div id="userlist" class="userlist"></div>
+    <div id="chat-area"></div>
+  `;
+  document.getElementById('logout-btn').onclick = () => {
+    if (pollTimer) clearInterval(pollTimer);
+    localStorage.removeItem('token');
+    localStorage.removeItem('me');
+    token = null; me = null; peer = '';
+    renderAuth();
+  };
+  document.getElementById('open-chat-btn').onclick = () => {
+    const v = document.getElementById('peer-input').value.trim().toLowerCase();
+    if (!v) return;
+    peer = v;
+    startChat();
+  };
+  document.getElementById('peer-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('open-chat-btn').click(); });
+
+  try {
+    const users = await api('/api/users');
+    const list = document.getElementById('userlist');
+    list.innerHTML = users.map(u => `<span data-u="${esc(u)}">${esc(u)}</span>`).join('') ||
+      '<span class="muted" style="background:none;cursor:default;">Пока никто больше не зарегистрирован</span>';
+    list.querySelectorAll('span[data-u]').forEach(el => {
+      el.onclick = () => { peer = el.getAttribute('data-u'); document.getElementById('peer-input').value = peer; startChat(); };
+    });
+  } catch (e) {}
+
+  if (peer) startChat();
+}
+
+async function startChat() {
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById('chat-area').innerHTML = `
+    <div class="chat-box">
+      <div class="muted" style="margin-bottom:10px;">Чат с <b>${esc(peer)}</b></div>
+      <div class="messages" id="messages"></div>
+      <div class="row">
+        <input id="msg-input" placeholder="Написать сообщение..." />
+        <button id="send-btn">Отправить</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('send-btn').onclick = sendMessage;
+  document.getElementById('msg-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  await loadMessages();
+  pollTimer = setInterval(loadMessages, 2500);
+}
+
+async function loadMessages() {
+  const box = document.getElementById('messages');
+  if (!box) return;
+  let list = [];
+  try {
+    list = await api('/api/messages/' + encodeURIComponent(peer));
+  } catch (e) { return; }
+  box.innerHTML = list.map(m => {
+    const mine = m.from === me;
+    return `<div class="msg ${mine ? 'mine' : ''}">
+      <div class="bubble">${esc(m.text)}</div>
+      <div class="time">${new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    await api('/api/messages', { method: 'POST', body: JSON.stringify({ to: peer, text }) });
+    await loadMessages();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+if (token && me) {
+  renderMain();
+} else {
+  renderAuth();
+}
+</script>
+</body>
+</html>
