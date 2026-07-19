@@ -126,11 +126,51 @@
   }
   a.toggle { display:block; text-align:center; margin-top:12px; font-size:13px; color:#7a4fc9; cursor:pointer; font-weight: 600; }
   .auth-card-wrap { padding-top: 1rem; }
+
+  .logo-badge { cursor: pointer; }
+  .logo-badge:hover { filter: brightness(1.08); }
+
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(40, 15, 70, 0.45);
+    align-items: center; justify-content: center;
+    padding: 20px;
+    z-index: 50;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 18px; padding: 1.5rem;
+    max-width: 340px; width: 100%;
+    box-shadow: 0 20px 50px rgba(40,15,70,0.35);
+  }
+  .modal-title { font-size: 18px; font-weight: 800; color: #3d1e6d; margin-bottom: 12px; }
+  .modal-row { margin-bottom: 8px; }
+  .modal-label { display: block; font-size: 11px; color: #8b7aa8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+  .modal-value { font-size: 14px; color: #3d1e6d; font-weight: 600; }
+
+  .conv-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .conv-item-main { flex: 1; min-width: 0; }
+  .conv-delete-btn {
+    width: auto; padding: 6px 9px; flex-shrink: 0;
+    background: #fdeef4; color: #d6336c; box-shadow: none; font-size: 13px;
+  }
+  .conv-delete-btn:hover { background: #fbdce9; }
+
+  .msg { display: flex; align-items: flex-end; gap: 6px; }
+  .msg.mine { justify-content: flex-end; }
+  .msg-content { max-width: 100%; }
+  .msg-delete-btn {
+    width: auto; padding: 3px 7px; font-size: 11px;
+    background: #fdeef4; color: #d6336c; box-shadow: none;
+    opacity: 0.75; flex-shrink: 0;
+  }
+  .msg-delete-btn:hover { opacity: 1; }
 </style>
 </head>
 <body>
 <div class="site-header">
-  <div class="logo-badge">
+  <div class="logo-badge" id="logo-btn" role="button" tabindex="0" aria-label="О разработчике">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M3 16.5C3 13 6 11 10 11H16C18.5 11 20.5 13 20.5 15.5C20.5 18 18.5 20 16 20H7C4.8 20 3 18.2 3 16.5Z" fill="#5b3a94"/>
       <path d="M6 11C6 8 8 6 11 6H14C15.5 6 16.5 7 16.5 8.5V11H6Z" fill="#7c4fc9"/>
@@ -145,6 +185,15 @@
   </div>
 </div>
 <div class="wrap" id="app"></div>
+
+<div id="modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Об утюге</div>
+    <div class="modal-row"><span class="modal-label">Разработчик</span><span class="modal-value">illia.develop</span></div>
+    <div class="modal-row"><span class="modal-label">Контактный email</span><span class="modal-value">illiaa.grechka@gmail.com</span></div>
+    <button id="modal-close-btn" class="secondary" style="margin-top:14px;">Закрыть</button>
+  </div>
+</div>
 
 <script>
 const app = document.getElementById('app');
@@ -268,17 +317,42 @@ async function loadConversations() {
 
   box.innerHTML = list.map(c => `
     <div class="conv-item" data-u="${esc(c.username)}">
-      <div class="conv-name">${esc(c.username)}</div>
-      <div class="conv-preview">${c.lastFromMe ? 'Вы: ' : ''}${esc(c.lastText)}</div>
+      <div class="conv-item-main">
+        <div class="conv-name">${esc(c.username)}</div>
+        <div class="conv-preview">${c.lastFromMe ? 'Вы: ' : ''}${esc(c.lastText)}</div>
+      </div>
+      <button class="conv-delete-btn" data-u="${esc(c.username)}" title="Удалить чат">✕</button>
     </div>
   `).join('');
-  box.querySelectorAll('.conv-item').forEach(el => {
+  box.querySelectorAll('.conv-item-main').forEach(el => {
     el.onclick = () => {
-      peer = el.getAttribute('data-u');
+      peer = el.closest('.conv-item').getAttribute('data-u');
       document.getElementById('peer-input').value = peer;
       startChat();
     };
   });
+  box.querySelectorAll('.conv-delete-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      deleteConversation(btn.getAttribute('data-u'));
+    };
+  });
+}
+
+async function deleteConversation(withUser) {
+  if (!confirm('Удалить весь чат с "' + withUser + '"? Это удалит переписку у обеих сторон.')) return;
+  try {
+    await api('/api/conversations/' + encodeURIComponent(withUser), { method: 'DELETE' });
+    if (peer === withUser) {
+      if (pollTimer) clearInterval(pollTimer);
+      peer = '';
+      document.getElementById('peer-input').value = '';
+      document.getElementById('chat-area').innerHTML = '';
+    }
+    await loadConversations();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 async function startChat() {
@@ -308,13 +382,30 @@ async function loadMessages() {
   } catch (e) { return; }
   box.innerHTML = list.map(m => {
     const mine = m.from === me;
+    const delBtn = mine ? `<button class="msg-delete-btn" data-id="${esc(m.id)}" title="Удалить сообщение">✕</button>` : '';
     return `<div class="msg ${mine ? 'mine' : ''}">
-      <div class="bubble">${esc(m.text)}</div>
-      <div class="time">${new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+      ${delBtn}
+      <div class="msg-content">
+        <div class="bubble">${esc(m.text)}</div>
+        <div class="time">${new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+      </div>
     </div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
+  box.querySelectorAll('.msg-delete-btn').forEach(btn => {
+    btn.onclick = () => deleteMessage(btn.getAttribute('data-id'));
+  });
   loadConversations();
+}
+
+async function deleteMessage(id) {
+  if (!confirm('Удалить это сообщение у всех?')) return;
+  try {
+    await api('/api/messages/single/' + encodeURIComponent(id), { method: 'DELETE' });
+    await loadMessages();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 async function sendMessage() {
@@ -341,6 +432,12 @@ if (token && me) {
 } else {
   renderAuth();
 }
+
+const modalOverlay = document.getElementById('modal-overlay');
+document.getElementById('logo-btn').addEventListener('click', () => modalOverlay.classList.add('open'));
+document.getElementById('logo-btn').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') modalOverlay.classList.add('open'); });
+document.getElementById('modal-close-btn').addEventListener('click', () => modalOverlay.classList.remove('open'));
+modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
 </script>
 </body>
 </html>
