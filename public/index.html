@@ -130,6 +130,17 @@
   .logo-badge { cursor: pointer; }
   .logo-badge:hover { filter: brightness(1.08); }
 
+  .search-btn {
+    margin-left: auto;
+    width: 42px; height: 42px; padding: 0; flex-shrink: 0;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.18);
+    box-shadow: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .search-btn:hover { background: rgba(255,255,255,0.28); }
+  .search-btn svg { width: 20px; height: 20px; }
+
   .modal-overlay {
     display: none;
     position: fixed; inset: 0;
@@ -179,10 +190,13 @@
       <circle cx="8.8" cy="15.5" r="1.1" fill="#ffd166"/>
     </svg>
   </div>
-  <div>
-    <div class="site-title">Утюг-чат</div>
-    <div class="site-subtitle">гладим переписку без складок</div>
-  </div>
+  <div class="site-title">Утюг-чат</div>
+  <button class="search-btn" id="search-btn" aria-label="Найти пользователя">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="11" cy="11" r="6.5" stroke="#fff" stroke-width="2"/>
+      <line x1="15.8" y1="15.8" x2="20.5" y2="20.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
 </div>
 <div class="wrap" id="app"></div>
 
@@ -192,6 +206,18 @@
     <div class="modal-row"><span class="modal-label">Разработчик</span><span class="modal-value">illia.develop</span></div>
     <div class="modal-row"><span class="modal-label">Контактный email</span><span class="modal-value">illiaa.grechka@gmail.com</span></div>
     <button id="modal-close-btn" class="secondary" style="margin-top:14px;">Закрыть</button>
+  </div>
+</div>
+
+<div id="search-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Написать пользователю</div>
+    <input id="search-peer-input" placeholder="имя пользователя" />
+    <div id="search-error" class="error"></div>
+    <div class="row" style="margin-top:6px;">
+      <button id="search-open-btn">Открыть чат</button>
+      <button id="search-close-btn" class="secondary">Отмена</button>
+    </div>
   </div>
 </div>
 
@@ -216,6 +242,7 @@ async function api(path, options = {}) {
 }
 
 function renderAuth(errorMsg) {
+  document.getElementById('search-btn').style.display = 'none';
   const isRegister = mode === 'register';
   app.innerHTML = `
     <div class="auth-card-wrap">
@@ -253,6 +280,7 @@ async function submitAuth() {
 }
 
 async function renderMain() {
+  document.getElementById('search-btn').style.display = 'flex';
   app.innerHTML = `
     <div class="card">
       <div class="topbar">
@@ -262,12 +290,6 @@ async function renderMain() {
 
       <div class="section-title" style="color:#8b7aa8;">Чаты</div>
       <div id="conv-list" class="conv-list"></div>
-
-      <div class="row" style="margin: 1rem 0 6px;">
-        <input id="peer-input" placeholder="имя собеседника" value="${esc(peer)}" />
-        <button id="open-chat-btn">Написать</button>
-      </div>
-      <div id="userlist" class="userlist"></div>
 
       <div id="chat-area"></div>
     </div>
@@ -279,25 +301,8 @@ async function renderMain() {
     token = null; me = null; peer = '';
     renderAuth();
   };
-  document.getElementById('open-chat-btn').onclick = () => {
-    const v = document.getElementById('peer-input').value.trim().toLowerCase();
-    if (!v) return;
-    peer = v;
-    startChat();
-  };
-  document.getElementById('peer-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('open-chat-btn').click(); });
 
   await loadConversations();
-
-  try {
-    const users = await api('/api/users');
-    const list = document.getElementById('userlist');
-    list.innerHTML = users.map(u => `<span data-u="${esc(u)}">${esc(u)}</span>`).join('') ||
-      '<span class="muted" style="background:none;cursor:default;">Пока никто больше не зарегистрирован</span>';
-    list.querySelectorAll('span[data-u]').forEach(el => {
-      el.onclick = () => { peer = el.getAttribute('data-u'); document.getElementById('peer-input').value = peer; startChat(); };
-    });
-  } catch (e) {}
 
   if (peer) startChat();
 }
@@ -327,7 +332,6 @@ async function loadConversations() {
   box.querySelectorAll('.conv-item-main').forEach(el => {
     el.onclick = () => {
       peer = el.closest('.conv-item').getAttribute('data-u');
-      document.getElementById('peer-input').value = peer;
       startChat();
     };
   });
@@ -346,7 +350,6 @@ async function deleteConversation(withUser) {
     if (peer === withUser) {
       if (pollTimer) clearInterval(pollTimer);
       peer = '';
-      document.getElementById('peer-input').value = '';
       document.getElementById('chat-area').innerHTML = '';
     }
     await loadConversations();
@@ -438,6 +441,48 @@ document.getElementById('logo-btn').addEventListener('click', () => modalOverlay
 document.getElementById('logo-btn').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') modalOverlay.classList.add('open'); });
 document.getElementById('modal-close-btn').addEventListener('click', () => modalOverlay.classList.remove('open'));
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
+
+const searchOverlay = document.getElementById('search-modal-overlay');
+const searchInput = document.getElementById('search-peer-input');
+const searchError = document.getElementById('search-error');
+
+function openSearchModal() {
+  if (!token) return;
+  searchInput.value = '';
+  searchError.textContent = '';
+  searchOverlay.classList.add('open');
+  setTimeout(() => searchInput.focus(), 0);
+}
+function closeSearchModal() {
+  searchOverlay.classList.remove('open');
+}
+
+document.getElementById('search-btn').addEventListener('click', openSearchModal);
+document.getElementById('search-close-btn').addEventListener('click', closeSearchModal);
+searchOverlay.addEventListener('click', e => { if (e.target === searchOverlay) closeSearchModal(); });
+
+async function submitSearch() {
+  const v = searchInput.value.trim().toLowerCase();
+  if (!v) return;
+  if (v === me) {
+    searchError.textContent = 'Это же вы :)';
+    return;
+  }
+  try {
+    const users = await api('/api/users');
+    if (!users.includes(v)) {
+      searchError.textContent = 'Такой пользователь не найден.';
+      return;
+    }
+    peer = v;
+    closeSearchModal();
+    startChat();
+  } catch (e) {
+    searchError.textContent = e.message;
+  }
+}
+document.getElementById('search-open-btn').addEventListener('click', submitSearch);
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitSearch(); });
 </script>
 </body>
 </html>
