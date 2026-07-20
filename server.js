@@ -14,7 +14,7 @@ if (!MONGODB_URI) {
 }
 
 let db;
-let users, messages, sessions;
+let users, messages, sessions, contacts;
 
 async function start() {
   const client = new MongoClient(MONGODB_URI);
@@ -23,12 +23,14 @@ async function start() {
   users = db.collection('users');
   messages = db.collection('messages');
   sessions = db.collection('sessions');
+  contacts = db.collection('contacts');
 
   // Индексы для скорости и уникальности имён пользователей.
   await users.createIndex({ username: 1 }, { unique: true });
   await messages.createIndex({ from: 1, to: 1, time: 1 });
   await messages.createIndex({ id: 1 }, { unique: true });
   await sessions.createIndex({ token: 1 }, { unique: true });
+  await contacts.createIndex({ owner: 1, contact: 1 }, { unique: true });
 
   app.listen(PORT, () => {
     console.log(`Мессенджер запущен: http://localhost:${PORT}`);
@@ -120,8 +122,61 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- Проверка токена (для автоматического входа при открытии страницы) ---
-app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ username: req.username });
+app.get('/api/me', requireAuth, async (req, res) => {
+  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, _id: 0 } });
+  res.json({ username: req.username, nickname: (user && user.nickname) || null });
+});
+
+// --- Смена своего ника (отображаемого имени, логин остаётся прежним) ---
+app.patch('/api/profile', requireAuth, async (req, res) => {
+  const { nickname } = req.body || {};
+  const nick = (nickname || '').trim();
+  if (nick.length > 40) {
+    return res.status(400).json({ error: 'Ник слишком длинный.' });
+  }
+  await users.updateOne({ username: req.username }, { $set: { nickname: nick || null } });
+  res.json({ username: req.username, nickname: nick || null });
+});
+
+// --- Публичная информация о другом пользователе (ник) ---
+app.get('/api/profile/:username', requireAuth, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, _id: 0 } });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  res.json(user);
+});
+
+// --- Моя личная подпись (алиас) для конкретного собеседника: чтение ---
+app.get('/api/contacts/:contact', requireAuth, async (req, res) => {
+  const contact = (req.params.contact || '').trim().toLowerCase();
+  const doc = await contacts.findOne({ owner: req.username, contact });
+  res.json({ contact, alias: (doc && doc.alias) || null });
+});
+
+// --- Моя личная подпись (алиас) для конкретного собеседника: запись ---
+app.patch('/api/contacts/:contact', requireAuth, async (req, res) => {
+  const contact = (req.params.contact || '').trim().toLowerCase();
+  const { alias } = req.body || {};
+  const clean = (alias || '').trim();
+
+  const contactExists = await users.findOne({ username: contact });
+  if (!contactExists) {
+    return res.status(404).json({ error: 'Пользователь не найден.' });
+  }
+
+  if (!clean) {
+    await contacts.deleteOne({ owner: req.username, contact });
+    return res.json({ contact, alias: null });
+  }
+  if (clean.length > 40) {
+    return res.status(400).json({ error: 'Подпись слишком длинная.' });
+  }
+  await contacts.updateOne(
+    { owner: req.username, contact },
+    { $set: { alias: clean } },
+    { upsert: true }
+  );
+  res.json({ contact, alias: clean });
 });
 
 // --- Список всех пользователей (чтобы было видно, кому можно писать) ---
@@ -143,7 +198,20 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
     }
   }
 
-  const list = Array.from(byPartner.values()).sort((a, b) => b.time - a.time);
+  const partners = Array.from(byPartner.keys());
+  const [partnerUsers, myContacts] = await Promise.all([
+    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, _id: 0 }).toArray(),
+    contacts.find({ owner: req.username, contact: { $in: partners } }).project({ contact: 1, alias: 1, _id: 0 }).toArray()
+  ]);
+  const nicknameByUser = new Map(partnerUsers.map(u => [u.username, u.nickname || null]));
+  const aliasByUser = new Map(myContacts.map(c => [c.contact, c.alias || null]));
+
+  const list = Array.from(byPartner.values()).map(c => ({
+    ...c,
+    nickname: nicknameByUser.get(c.username) || null,
+    alias: aliasByUser.get(c.username) || null
+  })).sort((a, b) => b.time - a.time);
+
   res.json(list);
 });
 
