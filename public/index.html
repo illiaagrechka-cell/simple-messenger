@@ -6,177 +6,194 @@
 <title>Простой мессенджер</title>
 <style>
   * { box-sizing: border-box; }
-  html, body {
-    min-height: 100%;
+  html, body { min-height: 100%; }
+
+  :root {
+    --bg1: #ff9de2; --bg2: #a78bfa; --bg3: #60a5fa;
+    --accent1: #a259ff; --accent2: #ff6fb0;
+    --card-bg: #ffffff;
+    --text-main: #3d1e6d;
+    --text-muted: #8b7aa8;
+    --input-bg: #fbf7ff;
+    --input-border: #eee0fb;
+    --bubble-theirs-bg: #ffffff;
+    --bubble-theirs-text: #3d1e6d;
+    --conv-accent: #ff8ac4;
+    --chip-bg: #f1e9ff;
+    --chip-text: #6b3fa0;
+    --danger-bg: #fdeef4;
+    --danger-text: #d6336c;
+    --header-btn-bg: rgba(255,255,255,0.18);
+    --header-btn-bg-hover: rgba(255,255,255,0.28);
   }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    color: #24163a;
-    background: linear-gradient(160deg, #ff9de2 0%, #a78bfa 42%, #60a5fa 100%);
-    background-attachment: fixed;
-    min-height: 100vh;
+  body[data-theme="ocean"] {
+    --bg1: #38bdf8; --bg2: #0ea5e9; --bg3: #22d3ee;
+    --accent1: #0284c7; --accent2: #22d3ee;
+    --text-main: #0c3a52;
+    --text-muted: #5b8ba3;
+    --input-bg: #f0f9ff;
+    --input-border: #d6eefc;
+    --bubble-theirs-text: #0c3a52;
+    --conv-accent: #38bdf8;
+    --chip-bg: #e0f2fe;
+    --chip-text: #075985;
+  }
+  body[data-theme="mint"] {
+    --bg1: #6ee7b7; --bg2: #34d399; --bg3: #10b981;
+    --accent1: #059669; --accent2: #34d399;
+    --text-main: #064e3b;
+    --text-muted: #5f9c85;
+    --input-bg: #f0fdf7;
+    --input-border: #d3f5e6;
+    --bubble-theirs-text: #064e3b;
+    --conv-accent: #34d399;
+    --chip-bg: #d7f8ea;
+    --chip-text: #065f46;
+  }
+  body[data-theme="dark"] {
+    --bg1: #1a1030; --bg2: #2b1a4a; --bg3: #1a1030;
+    --accent1: #7c3aed; --accent2: #c026d3;
+    --card-bg: #241a35;
+    --text-main: #f1e9ff;
+    --text-muted: #b9a4d9;
+    --input-bg: #2f2247;
+    --input-border: #3d2d5c;
+    --bubble-theirs-bg: #3a2a57;
+    --bubble-theirs-text: #f1e9ff;
+    --conv-accent: #c026d3;
+    --chip-bg: #3a2a57;
+    --chip-text: #e0d3ff;
+    --danger-bg: #4a2038;
+    --danger-text: #ff9ec4;
   }
 
-  .site-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 20px;
-    color: #fff;
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0; padding: 0;
+    color: var(--text-main);
+    background: linear-gradient(160deg, var(--bg1) 0%, var(--bg2) 42%, var(--bg3) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    transition: background 0.2s;
   }
+
+  .site-header { display: flex; align-items: center; gap: 8px; padding: 14px 20px; color: #fff; }
   .logo-badge {
     width: 42px; height: 42px; border-radius: 14px;
     background: linear-gradient(135deg, #ffd166, #ff6fb0);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-    flex-shrink: 0;
+    flex-shrink: 0; cursor: pointer;
   }
+  .logo-badge:hover { filter: brightness(1.08); }
   .logo-badge svg { width: 24px; height: 24px; }
-  .site-title { font-size: 19px; font-weight: 800; letter-spacing: 0.01em; text-shadow: 0 1px 4px rgba(0,0,0,0.15); }
-  .site-subtitle { font-size: 12px; opacity: 0.85; margin-top: -2px; }
+  .site-title { font-size: 19px; font-weight: 800; letter-spacing: 0.01em; text-shadow: 0 1px 4px rgba(0,0,0,0.15); margin-right: 4px; }
+
+  .icon-btn {
+    width: 42px; height: 42px; padding: 0; flex-shrink: 0;
+    border-radius: 14px; background: var(--header-btn-bg); box-shadow: none;
+    display: none; align-items: center; justify-content: center;
+  }
+  .icon-btn.visible { display: flex; }
+  .icon-btn:hover { background: var(--header-btn-bg-hover); }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .search-btn { margin-left: auto; }
 
   .wrap { max-width: 440px; margin: 0 auto; padding: 0.5rem 1rem 3rem; min-height: 60vh; }
+  .card { background: var(--card-bg); border-radius: 20px; padding: 1.5rem; box-shadow: 0 10px 35px rgba(20,10,40,0.25); }
 
-  .card {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 1.5rem;
-    box-shadow: 0 10px 35px rgba(60, 20, 90, 0.25);
-  }
-
-  h1 { font-size: 21px; font-weight: 800; margin: 0 0 1.25rem; color: #3d1e6d; }
+  h1 { font-size: 21px; font-weight: 800; margin: 0 0 1.25rem; color: var(--text-main); }
   input {
     width: 100%; padding: 11px 14px; margin-bottom: 12px;
-    border: 2px solid #eee0fb; border-radius: 12px; font-size: 15px;
-    background: #fbf7ff;
-    outline: none;
-    transition: border-color 0.15s;
+    border: 2px solid var(--input-border); border-radius: 12px; font-size: 15px;
+    background: var(--input-bg); color: var(--text-main);
+    outline: none; transition: border-color 0.15s;
   }
-  input:focus { border-color: #b57bff; }
+  input:focus { border-color: var(--accent1); }
   button {
     width: 100%; padding: 11px 14px; border: none; border-radius: 12px;
-    background: linear-gradient(135deg, #a259ff, #ff6fb0);
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
     color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
-    box-shadow: 0 4px 14px rgba(162, 89, 255, 0.35);
+    box-shadow: 0 4px 14px rgba(120, 60, 200, 0.35);
     transition: transform 0.1s, box-shadow 0.1s;
   }
-  button:hover { box-shadow: 0 6px 18px rgba(162, 89, 255, 0.45); }
+  button:hover { box-shadow: 0 6px 18px rgba(120, 60, 200, 0.45); }
   button:active { transform: scale(0.97); }
-  button.secondary {
-    background: #f1e9ff; color: #6b3fa0; box-shadow: none;
-  }
-  .error { color: #d6336c; font-size: 13px; margin-top: 6px; font-weight: 600; }
+  button.secondary { background: var(--chip-bg); color: var(--chip-text); box-shadow: none; }
+  .error { color: var(--danger-text); font-size: 13px; margin-top: 6px; font-weight: 600; min-height: 1px; }
   .row { display: flex; gap: 8px; }
   .row input { flex: 1; margin-bottom: 0; }
   .row button { width: auto; padding: 11px 18px; white-space: nowrap; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.1rem; }
-  .topbar button { width: auto; padding: 7px 14px; font-size: 13px; }
-  .muted { color: #8b7aa8; font-size: 13px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.1rem; gap: 8px; }
+  .topbar button { width: auto; padding: 7px 14px; font-size: 13px; flex-shrink: 0; }
+  .muted { color: var(--text-muted); font-size: 13px; }
   .chat-box {
-    background: linear-gradient(180deg, #fdf6ff, #f3e8ff);
-    border-radius: 18px;
-    padding: 1rem; margin-top: 1rem;
-    box-shadow: inset 0 0 0 2px #eee0fb;
+    background: color-mix(in srgb, var(--card-bg) 60%, var(--bg1) 8%);
+    border-radius: 18px; padding: 1rem; margin-top: 1rem;
+    box-shadow: inset 0 0 0 2px var(--input-border);
   }
-  .messages {
-    display: flex; flex-direction: column; gap: 8px;
-    max-height: 340px; overflow-y: auto; margin-bottom: 10px;
-    padding-right: 4px;
-  }
-  .msg { max-width: 75%; }
-  .msg.mine { align-self: flex-end; }
+  .chat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .chat-header .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-alias-btn { width: auto; padding: 4px 8px; font-size: 12px; background: var(--chip-bg); color: var(--chip-text); box-shadow: none; flex-shrink: 0; }
+
+  .messages { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; margin-bottom: 10px; padding-right: 4px; }
+  .msg { max-width: 75%; display: flex; align-items: flex-end; gap: 6px; }
+  .msg.mine { align-self: flex-end; justify-content: flex-end; }
+  .msg-content { max-width: 100%; }
   .bubble {
     padding: 8px 12px; border-radius: 14px; font-size: 14px;
-    background: #fff; color: #3d1e6d;
-    box-shadow: 0 2px 6px rgba(60,20,90,0.08);
+    background: var(--bubble-theirs-bg); color: var(--bubble-theirs-text);
+    box-shadow: 0 2px 6px rgba(20,10,40,0.08);
   }
-  .msg.mine .bubble {
-    background: linear-gradient(135deg, #a259ff, #ff6fb0);
-    color: #fff;
-  }
-  .time { font-size: 11px; color: #a993c4; margin-top: 3px; }
+  .msg.mine .bubble { background: linear-gradient(135deg, var(--accent1), var(--accent2)); color: #fff; }
+  .time { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
   .msg.mine .time { text-align: right; }
-  .userlist { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .userlist span {
-    padding: 5px 12px; border-radius: 999px;
-    background: #f1e9ff; color: #6b3fa0;
-    font-size: 13px; cursor: pointer; font-weight: 600;
-  }
-  .userlist span:hover { background: #e4d3ff; }
+  .msg-delete-btn { width: auto; padding: 3px 7px; font-size: 11px; background: var(--danger-bg); color: var(--danger-text); box-shadow: none; opacity: 0.75; flex-shrink: 0; }
+  .msg-delete-btn:hover { opacity: 1; }
+
   .section-title {
-    font-size: 12px; color: #f1e6ff; margin: 0 0 8px 4px; font-weight: 800;
+    font-size: 12px; color: var(--text-muted); margin: 0 0 8px 4px; font-weight: 800;
     text-transform: uppercase; letter-spacing: 0.06em;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.15);
   }
   .conv-list { display: flex; flex-direction: column; gap: 6px; }
   .conv-item {
-    background: #fff; border-radius: 14px;
-    padding: 10px 14px; cursor: pointer;
-    box-shadow: 0 3px 10px rgba(60,20,90,0.12);
-    border-left: 4px solid #ff8ac4;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    background: var(--card-bg); border-radius: 14px; padding: 10px 14px; cursor: pointer;
+    box-shadow: 0 3px 10px rgba(20,10,40,0.10);
+    border-left: 4px solid var(--conv-accent);
     transition: transform 0.1s;
   }
-  .conv-item:hover { transform: translateX(2px); background: #fdf6ff; }
-  .conv-name { font-size: 14px; font-weight: 800; color: #3d1e6d; }
-  .conv-preview {
-    font-size: 13px; color: #8b7aa8; margin-top: 2px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  a.toggle { display:block; text-align:center; margin-top:12px; font-size:13px; color:#7a4fc9; cursor:pointer; font-weight: 600; }
+  .conv-item:hover { transform: translateX(2px); }
+  .conv-item-main { flex: 1; min-width: 0; }
+  .conv-name { font-size: 14px; font-weight: 800; color: var(--text-main); }
+  .conv-preview { font-size: 13px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .conv-alias-btn, .conv-delete-btn { width: auto; padding: 6px 9px; box-shadow: none; font-size: 13px; flex-shrink: 0; }
+  .conv-alias-btn { background: var(--chip-bg); color: var(--chip-text); }
+  .conv-delete-btn { background: var(--danger-bg); color: var(--danger-text); }
+
+  a.toggle { display: block; text-align: center; margin-top: 12px; font-size: 13px; color: var(--accent1); cursor: pointer; font-weight: 600; }
   .auth-card-wrap { padding-top: 1rem; }
 
-  .logo-badge { cursor: pointer; }
-  .logo-badge:hover { filter: brightness(1.08); }
-
-  .search-btn {
-    margin-left: auto;
-    width: 42px; height: 42px; padding: 0; flex-shrink: 0;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.18);
-    box-shadow: none;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .search-btn:hover { background: rgba(255,255,255,0.28); }
-  .search-btn svg { width: 20px; height: 20px; }
-
   .modal-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(40, 15, 70, 0.45);
-    align-items: center; justify-content: center;
-    padding: 20px;
-    z-index: 50;
+    display: none; position: fixed; inset: 0;
+    background: rgba(20, 10, 35, 0.5);
+    align-items: center; justify-content: center; padding: 20px; z-index: 50;
   }
   .modal-overlay.open { display: flex; }
-  .modal-box {
-    background: #fff; border-radius: 18px; padding: 1.5rem;
-    max-width: 340px; width: 100%;
-    box-shadow: 0 20px 50px rgba(40,15,70,0.35);
-  }
-  .modal-title { font-size: 18px; font-weight: 800; color: #3d1e6d; margin-bottom: 12px; }
+  .modal-box { background: var(--card-bg); border-radius: 18px; padding: 1.5rem; max-width: 340px; width: 100%; box-shadow: 0 20px 50px rgba(20,10,35,0.4); }
+  .modal-title { font-size: 18px; font-weight: 800; color: var(--text-main); margin-bottom: 12px; }
   .modal-row { margin-bottom: 8px; }
-  .modal-label { display: block; font-size: 11px; color: #8b7aa8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-  .modal-value { font-size: 14px; color: #3d1e6d; font-weight: 600; }
+  .modal-label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+  .modal-value { font-size: 14px; color: var(--text-main); font-weight: 600; }
 
-  .conv-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .conv-item-main { flex: 1; min-width: 0; }
-  .conv-delete-btn {
-    width: auto; padding: 6px 9px; flex-shrink: 0;
-    background: #fdeef4; color: #d6336c; box-shadow: none; font-size: 13px;
+  .theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 4px; }
+  .theme-swatch {
+    padding: 16px 8px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 12px;
+    box-shadow: none; text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    outline: 2px solid transparent; outline-offset: 2px;
   }
-  .conv-delete-btn:hover { background: #fbdce9; }
-
-  .msg { display: flex; align-items: flex-end; gap: 6px; }
-  .msg.mine { justify-content: flex-end; }
-  .msg-content { max-width: 100%; }
-  .msg-delete-btn {
-    width: auto; padding: 3px 7px; font-size: 11px;
-    background: #fdeef4; color: #d6336c; box-shadow: none;
-    opacity: 0.75; flex-shrink: 0;
-  }
-  .msg-delete-btn:hover { opacity: 1; }
+  .theme-swatch.active { outline: 3px solid var(--text-main); }
 </style>
 </head>
 <body>
@@ -190,8 +207,20 @@
       <circle cx="8.8" cy="15.5" r="1.1" fill="#ffd166"/>
     </svg>
   </div>
+  <button class="icon-btn" id="profile-btn" aria-label="Профиль">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="8.5" r="3.2" stroke="#fff" stroke-width="2"/>
+      <path d="M5 19c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button class="icon-btn" id="settings-btn" aria-label="Настройки">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="2.8" stroke="#fff" stroke-width="2"/>
+      <path d="M12 4V6.2M12 17.8V20M20 12H17.8M6.2 12H4M17.3 6.7L15.7 8.3M8.3 15.7L6.7 17.3M17.3 17.3L15.7 15.7M8.3 8.3L6.7 6.7" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+  </button>
   <div class="site-title">Утюг-чат</div>
-  <button class="search-btn" id="search-btn" aria-label="Найти пользователя">
+  <button class="icon-btn search-btn" id="search-btn" aria-label="Найти пользователя">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="11" cy="11" r="6.5" stroke="#fff" stroke-width="2"/>
       <line x1="15.8" y1="15.8" x2="20.5" y2="20.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
@@ -221,12 +250,60 @@
   </div>
 </div>
 
+<div id="profile-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Профиль</div>
+    <div class="modal-row">
+      <span class="modal-label">Логин (для входа)</span>
+      <span class="modal-value" id="profile-username-display"></span>
+    </div>
+    <input id="nickname-input" placeholder="Ваш ник (видят другие)" style="margin-top:10px;" />
+    <div id="profile-error" class="error"></div>
+    <div class="row" style="margin-top:6px;">
+      <button id="profile-save-btn">Сохранить</button>
+      <button id="profile-close-btn" class="secondary">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Настройки</div>
+    <div class="modal-label" style="margin-bottom:8px;">Тема оформления</div>
+    <div class="theme-grid" id="theme-grid">
+      <button type="button" class="theme-swatch" data-theme="pink" style="background:linear-gradient(135deg,#ff9de2,#a78bfa);">Розовый</button>
+      <button type="button" class="theme-swatch" data-theme="ocean" style="background:linear-gradient(135deg,#38bdf8,#0ea5e9);">Океан</button>
+      <button type="button" class="theme-swatch" data-theme="mint" style="background:linear-gradient(135deg,#6ee7b7,#10b981);">Мята</button>
+      <button type="button" class="theme-swatch" data-theme="dark" style="background:linear-gradient(135deg,#2b1a4a,#1a1030);">Ночная</button>
+    </div>
+    <button id="settings-close-btn" class="secondary" style="margin-top:14px;">Закрыть</button>
+  </div>
+</div>
+
+<div id="alias-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Подпись для контакта</div>
+    <div class="modal-label" id="alias-target-label" style="margin-bottom:8px;"></div>
+    <input id="alias-input" placeholder="например, Лучший друг" />
+    <div class="muted" style="margin-top:-6px;margin-bottom:10px;">Видно только вам. Оставьте пустым, чтобы сбросить.</div>
+    <div id="alias-error" class="error"></div>
+    <div class="row">
+      <button id="alias-save-btn">Сохранить</button>
+      <button id="alias-close-btn" class="secondary">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const app = document.getElementById('app');
 const API = '';
 let token = localStorage.getItem('token') || null;
 let me = localStorage.getItem('me') || null;
+let myNickname = null;
 let peer = '';
+let currentPeerAlias = null;
+let currentPeerNickname = null;
+let currentAliasTarget = null;
 let pollTimer = null;
 let mode = 'login'; // 'login' | 'register'
 
@@ -241,8 +318,27 @@ async function api(path, options = {}) {
   return data;
 }
 
+// ---------- Темы ----------
+function applyTheme(key) {
+  document.body.setAttribute('data-theme', key);
+  localStorage.setItem('theme', key);
+  document.querySelectorAll('.theme-swatch').forEach(b => b.classList.toggle('active', b.getAttribute('data-theme') === key));
+}
+applyTheme(localStorage.getItem('theme') || 'pink');
+document.querySelectorAll('.theme-swatch').forEach(btn => {
+  btn.addEventListener('click', () => applyTheme(btn.getAttribute('data-theme')));
+});
+
+// ---------- Переключение видимости кнопок хедера ----------
+function setHeaderButtonsVisible(visible) {
+  ['profile-btn', 'settings-btn', 'search-btn'].forEach(id => {
+    document.getElementById(id).classList.toggle('visible', visible);
+  });
+}
+
+// ---------- Вход / регистрация ----------
 function renderAuth(errorMsg) {
-  document.getElementById('search-btn').style.display = 'none';
+  setHeaderButtonsVisible(false);
   const isRegister = mode === 'register';
   app.innerHTML = `
     <div class="auth-card-wrap">
@@ -273,22 +369,31 @@ async function submitAuth() {
     me = data.username;
     localStorage.setItem('token', token);
     localStorage.setItem('me', me);
+    try {
+      const meInfo = await api('/api/me');
+      myNickname = meInfo.nickname;
+    } catch (e) { myNickname = null; }
     renderMain();
   } catch (e) {
     renderAuth(e.message);
   }
 }
 
+function displayNameOf(username, nickname) {
+  return nickname || username;
+}
+
+// ---------- Главный экран ----------
 async function renderMain() {
-  document.getElementById('search-btn').style.display = 'flex';
+  setHeaderButtonsVisible(true);
   app.innerHTML = `
     <div class="card">
       <div class="topbar">
-        <span class="muted">Вы вошли как <b style="color:#3d1e6d;">${esc(me)}</b></span>
+        <span class="muted">Вы вошли как <b style="color:var(--text-main);">${esc(displayNameOf(me, myNickname))}</b></span>
         <button id="logout-btn" class="secondary">Выйти</button>
       </div>
 
-      <div class="section-title" style="color:#8b7aa8;">Чаты</div>
+      <div class="section-title">Чаты</div>
       <div id="conv-list" class="conv-list"></div>
 
       <div id="chat-area"></div>
@@ -298,12 +403,11 @@ async function renderMain() {
     if (pollTimer) clearInterval(pollTimer);
     localStorage.removeItem('token');
     localStorage.removeItem('me');
-    token = null; me = null; peer = '';
+    token = null; me = null; peer = ''; myNickname = null;
     renderAuth();
   };
 
   await loadConversations();
-
   if (peer) startChat();
 }
 
@@ -316,19 +420,25 @@ async function loadConversations() {
   } catch (e) { return; }
 
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Переписок пока нет — начните новый чат ниже.</div>';
+    box.innerHTML = '<div class="muted">Переписок пока нет — начните новый чат через лупу вверху.</div>';
     return;
   }
 
-  box.innerHTML = list.map(c => `
-    <div class="conv-item" data-u="${esc(c.username)}">
+  box.innerHTML = list.map(c => {
+    const name = c.alias || c.nickname || c.username;
+    return `
+    <div class="conv-item" data-u="${esc(c.username)}" data-alias="${esc(c.alias || '')}">
       <div class="conv-item-main">
-        <div class="conv-name">${esc(c.username)}</div>
+        <div class="conv-name">${esc(name)}</div>
         <div class="conv-preview">${c.lastFromMe ? 'Вы: ' : ''}${esc(c.lastText)}</div>
       </div>
-      <button class="conv-delete-btn" data-u="${esc(c.username)}" title="Удалить чат">✕</button>
-    </div>
-  `).join('');
+      <div class="conv-actions">
+        <button class="conv-alias-btn" data-u="${esc(c.username)}" title="Подписать для себя">✎</button>
+        <button class="conv-delete-btn" data-u="${esc(c.username)}" title="Удалить чат">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
   box.querySelectorAll('.conv-item-main').forEach(el => {
     el.onclick = () => {
       peer = el.closest('.conv-item').getAttribute('data-u');
@@ -336,9 +446,13 @@ async function loadConversations() {
     };
   });
   box.querySelectorAll('.conv-delete-btn').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); deleteConversation(btn.getAttribute('data-u')); };
+  });
+  box.querySelectorAll('.conv-alias-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      deleteConversation(btn.getAttribute('data-u'));
+      const item = btn.closest('.conv-item');
+      openAliasModal(item.getAttribute('data-u'), item.getAttribute('data-alias'));
     };
   });
 }
@@ -358,11 +472,33 @@ async function deleteConversation(withUser) {
   }
 }
 
+// ---------- Чат ----------
 async function startChat() {
   if (pollTimer) clearInterval(pollTimer);
+
+  let nickname = null;
+  currentPeerAlias = null;
+  try {
+    const [profile, contact] = await Promise.all([
+      api('/api/profile/' + encodeURIComponent(peer)),
+      api('/api/contacts/' + encodeURIComponent(peer))
+    ]);
+    nickname = profile.nickname;
+    currentPeerAlias = contact.alias;
+    currentPeerNickname = nickname;
+  } catch (e) {
+    document.getElementById('chat-area').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const displayName = currentPeerAlias || nickname || peer;
+
   document.getElementById('chat-area').innerHTML = `
     <div class="chat-box">
-      <div class="muted" style="margin-bottom:10px;">Чат с <b>${esc(peer)}</b></div>
+      <div class="chat-header">
+        <span class="muted">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b></span>
+        <button class="chat-alias-btn" id="chat-alias-btn">✎ подпись</button>
+      </div>
       <div class="messages" id="messages"></div>
       <div class="row">
         <input id="msg-input" placeholder="Написать сообщение..." />
@@ -372,6 +508,8 @@ async function startChat() {
   `;
   document.getElementById('send-btn').onclick = sendMessage;
   document.getElementById('msg-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  document.getElementById('chat-alias-btn').onclick = () => openAliasModal(peer, currentPeerAlias);
+
   await loadMessages();
   pollTimer = setInterval(loadMessages, 2500);
 }
@@ -425,8 +563,9 @@ async function sendMessage() {
   }
 }
 
+// ---------- Инициализация ----------
 if (token && me) {
-  api('/api/me').then(() => renderMain()).catch(() => {
+  api('/api/me').then(data => { myNickname = data.nickname; renderMain(); }).catch(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('me');
     token = null; me = null;
@@ -436,12 +575,14 @@ if (token && me) {
   renderAuth();
 }
 
+// ---------- Модалка "Об утюге" ----------
 const modalOverlay = document.getElementById('modal-overlay');
 document.getElementById('logo-btn').addEventListener('click', () => modalOverlay.classList.add('open'));
 document.getElementById('logo-btn').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') modalOverlay.classList.add('open'); });
 document.getElementById('modal-close-btn').addEventListener('click', () => modalOverlay.classList.remove('open'));
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
 
+// ---------- Модалка поиска пользователя ----------
 const searchOverlay = document.getElementById('search-modal-overlay');
 const searchInput = document.getElementById('search-peer-input');
 const searchError = document.getElementById('search-error');
@@ -453,9 +594,7 @@ function openSearchModal() {
   searchOverlay.classList.add('open');
   setTimeout(() => searchInput.focus(), 0);
 }
-function closeSearchModal() {
-  searchOverlay.classList.remove('open');
-}
+function closeSearchModal() { searchOverlay.classList.remove('open'); }
 
 document.getElementById('search-btn').addEventListener('click', openSearchModal);
 document.getElementById('search-close-btn').addEventListener('click', closeSearchModal);
@@ -469,8 +608,8 @@ async function submitSearch() {
     return;
   }
   try {
-    const users = await api('/api/users');
-    if (!users.includes(v)) {
+    const usersList = await api('/api/users');
+    if (!usersList.includes(v)) {
       searchError.textContent = 'Такой пользователь не найден.';
       return;
     }
@@ -483,6 +622,86 @@ async function submitSearch() {
 }
 document.getElementById('search-open-btn').addEventListener('click', submitSearch);
 searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitSearch(); });
+
+// ---------- Модалка профиля (мой ник) ----------
+const profileOverlay = document.getElementById('profile-modal-overlay');
+const nicknameInput = document.getElementById('nickname-input');
+const profileError = document.getElementById('profile-error');
+
+function openProfileModal() {
+  if (!token) return;
+  document.getElementById('profile-username-display').textContent = me;
+  nicknameInput.value = myNickname || '';
+  profileError.textContent = '';
+  profileOverlay.classList.add('open');
+  setTimeout(() => nicknameInput.focus(), 0);
+}
+function closeProfileModal() { profileOverlay.classList.remove('open'); }
+
+document.getElementById('profile-btn').addEventListener('click', openProfileModal);
+document.getElementById('profile-close-btn').addEventListener('click', closeProfileModal);
+profileOverlay.addEventListener('click', e => { if (e.target === profileOverlay) closeProfileModal(); });
+
+async function saveProfile() {
+  try {
+    const nickname = nicknameInput.value.trim();
+    const data = await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ nickname }) });
+    myNickname = data.nickname;
+    closeProfileModal();
+    renderMain();
+  } catch (e) {
+    profileError.textContent = e.message;
+  }
+}
+document.getElementById('profile-save-btn').addEventListener('click', saveProfile);
+nicknameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveProfile(); });
+
+// ---------- Модалка настроек (темы) ----------
+const settingsOverlay = document.getElementById('settings-modal-overlay');
+document.getElementById('settings-btn').addEventListener('click', () => {
+  if (!token) return;
+  settingsOverlay.classList.add('open');
+});
+document.getElementById('settings-close-btn').addEventListener('click', () => settingsOverlay.classList.remove('open'));
+settingsOverlay.addEventListener('click', e => { if (e.target === settingsOverlay) settingsOverlay.classList.remove('open'); });
+
+// ---------- Модалка подписи для контакта ----------
+const aliasOverlay = document.getElementById('alias-modal-overlay');
+const aliasInput = document.getElementById('alias-input');
+const aliasError = document.getElementById('alias-error');
+
+function openAliasModal(username, currentAlias) {
+  currentAliasTarget = username;
+  document.getElementById('alias-target-label').textContent = 'Собеседник: ' + username;
+  aliasInput.value = currentAlias || '';
+  aliasError.textContent = '';
+  aliasOverlay.classList.add('open');
+  setTimeout(() => aliasInput.focus(), 0);
+}
+function closeAliasModal() { aliasOverlay.classList.remove('open'); }
+document.getElementById('alias-close-btn').addEventListener('click', closeAliasModal);
+aliasOverlay.addEventListener('click', e => { if (e.target === aliasOverlay) closeAliasModal(); });
+
+async function saveAlias() {
+  try {
+    const alias = aliasInput.value.trim();
+    await api('/api/contacts/' + encodeURIComponent(currentAliasTarget), {
+      method: 'PATCH',
+      body: JSON.stringify({ alias })
+    });
+    closeAliasModal();
+    await loadConversations();
+    if (peer === currentAliasTarget) {
+      currentPeerAlias = alias || null;
+      const nameEl = document.getElementById('chat-peer-name');
+      if (nameEl) nameEl.textContent = currentPeerAlias || currentPeerNickname || peer;
+    }
+  } catch (e) {
+    aliasError.textContent = e.message;
+  }
+}
+document.getElementById('alias-save-btn').addEventListener('click', saveAlias);
+aliasInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveAlias(); });
 </script>
 </body>
 </html>
