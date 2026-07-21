@@ -99,7 +99,6 @@
   .icon-btn:hover { background: var(--header-btn-bg-hover); }
   .icon-btn svg { width: 19px; height: 19px; }
   .search-btn { margin-left: auto; }
-  .mobile-nav-btn { }
 
   /* Выпадающее меню трёх точек */
   .dots-menu { position: relative; }
@@ -146,6 +145,8 @@
   .card { background: var(--card-bg); border-radius: 20px; padding: 1.5rem; box-shadow: 0 10px 35px rgba(20,10,40,0.25); max-width: 380px; width: 100%; }
   h1 { font-size: 21px; font-weight: 800; margin: 0 0 1.25rem; color: var(--text-main); }
   a.toggle { display: block; text-align: center; margin-top: 12px; font-size: 13px; color: var(--accent1); cursor: pointer; font-weight: 600; }
+
+  #root { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
   /* ---------- Оболочка приложения ---------- */
   .app-shell { flex: 1; display: flex; min-height: 0; }
@@ -243,22 +244,24 @@
   .theme-swatch { padding: 16px 8px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 12px; box-shadow: none; text-shadow: 0 1px 3px rgba(0,0,0,0.4); outline: 2px solid transparent; outline-offset: 2px; }
   .theme-swatch.active { outline: 3px solid var(--text-main); }
 
-  /* Мобильный оверлей навигации */
-  .nav-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(20,10,35,0.55);
-    z-index: 65; align-items: flex-end; justify-content: center;
+  /* Нижняя навигационная панель (мобильный вариант, наложена поверх контента) */
+  .bottom-nav {
+    display: none;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;
+    justify-content: space-around; align-items: center;
+    background: var(--card-bg); box-shadow: 0 -4px 18px rgba(20,10,40,0.18);
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
   }
-  .nav-overlay.open { display: flex; }
-  .nav-overlay-sheet {
-    background: var(--card-bg); width: 100%; max-width: 480px;
-    border-radius: 20px 20px 0 0; padding: 12px; display: flex; flex-direction: column; gap: 4px;
+  .bottom-nav.visible { display: flex; }
+  .bottom-nav-item {
+    width: auto; background: none; box-shadow: none; color: var(--text-muted);
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; flex: 1;
   }
-  .nav-overlay-item {
-    width: 100%; background: none; box-shadow: none; color: var(--text-main);
-    display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 700;
-  }
-  .nav-overlay-item:hover { background: var(--chip-bg); }
-  .nav-overlay-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .bottom-nav-item svg { width: 21px; height: 21px; }
+  .bottom-nav-item:hover { background: var(--chip-bg); }
+  .bottom-nav-item.active { color: var(--accent1); }
+  .bottom-nav-item:active { transform: none; }
 
   /* Тост */
   .toast {
@@ -272,18 +275,19 @@
   /* ---------- Раскладка: мобильный (по умолчанию) ---------- */
   .app-shell { flex-direction: column; }
   .nav-rail { display: none; }
-  .mobile-nav-btn { display: none; }
   .chats-page { display: flex; }
-  .chat-list-pane { flex: 1; }
+  .chat-list-pane { flex: 1; padding-bottom: 64px; }
   .chat-view-pane { display: none; flex: 1; }
   .chats-page.show-chat .chat-list-pane { display: none; }
   .chats-page.show-chat .chat-view-pane { display: flex; }
   .chat-back-btn { display: flex; }
+  .conv-list { padding-bottom: 76px; }
+  .chat-input-row { margin-bottom: 60px; }
+  .profile-page-inner { padding-bottom: 76px; }
 
   /* ---------- Раскладка: десктоп ---------- */
   @media (min-width: 860px) {
-    .mobile-nav-btn { display: none !important; }
-    .nav-overlay { display: none !important; }
+    .bottom-nav { display: none !important; }
 
     .app-shell { flex-direction: row; }
     .nav-rail {
@@ -291,6 +295,10 @@
       width: 84px; padding-top: 20px;
     }
     .chats-page { display: flex !important; flex-direction: row; }
+    .chat-list-pane { padding-bottom: 0; }
+    .conv-list { padding-bottom: 16px; }
+    .chat-input-row { margin-bottom: 0; }
+    .profile-page-inner { padding-bottom: 20px; }
     .chat-list-pane { width: 30%; min-width: 280px; max-width: 420px; flex: none; border-right: 1px solid rgba(0,0,0,0.06); }
     .chat-view-pane { display: flex !important; flex: 1; }
     .chat-back-btn { display: none !important; }
@@ -308,12 +316,6 @@
       <circle cx="8.8" cy="15.5" r="1.1" fill="#ffd166"/>
     </svg>
   </div>
-  <button class="icon-btn mobile-nav-btn" id="mobile-nav-btn" aria-label="Меню">
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="8.5" r="3.2" stroke="#fff" stroke-width="2"/>
-      <path d="M5 19c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-  </button>
   <div class="site-title">Утюг-чат</div>
   <button class="icon-btn search-btn" id="search-btn" aria-label="Найти пользователя">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -339,25 +341,23 @@
 
 <div id="root"></div>
 
-<div class="nav-overlay" id="nav-overlay">
-  <div class="nav-overlay-sheet">
-    <button class="nav-overlay-item" data-page="chats">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h16v11H8l-4 4V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-      Чаты
-    </button>
-    <button class="nav-overlay-item" data-page="settings">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/><path d="M12 4V6.2M12 17.8V20M20 12H17.8M6.2 12H4M17.3 6.7L15.7 8.3M8.3 15.7L6.7 17.3M17.3 17.3L15.7 15.7M8.3 8.3L6.7 6.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      Настройки
-    </button>
-    <button class="nav-overlay-item" data-page="contacts">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="8" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 14c2.6.3 4.5 2 4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      Контакты
-    </button>
-    <button class="nav-overlay-item" data-page="profile">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8.5" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M5 19c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      Профиль
-    </button>
-  </div>
+<div class="bottom-nav" id="bottom-nav">
+  <button class="bottom-nav-item" data-page="chats">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h16v11H8l-4 4V5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    Чаты
+  </button>
+  <button class="bottom-nav-item" data-page="settings">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="2.8" stroke="currentColor" stroke-width="2"/><path d="M12 4V6.2M12 17.8V20M20 12H17.8M6.2 12H4M17.3 6.7L15.7 8.3M8.3 15.7L6.7 17.3M17.3 17.3L15.7 15.7M8.3 8.3L6.7 6.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    Настройки
+  </button>
+  <button class="bottom-nav-item" data-page="contacts">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="17" cy="8" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 14c2.6.3 4.5 2 4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    Контакты
+  </button>
+  <button class="bottom-nav-item" data-page="profile">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8.5" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M5 19c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    Профиль
+  </button>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -457,7 +457,7 @@ document.querySelectorAll('.theme-swatch').forEach(btn => {
 });
 
 function setHeaderButtonsVisible(visible) {
-  ['search-btn', 'dots-menu', 'mobile-nav-btn'].forEach(id => {
+  ['search-btn', 'dots-menu', 'bottom-nav'].forEach(id => {
     document.getElementById(id).classList.toggle('visible', visible);
   });
 }
@@ -578,7 +578,6 @@ function bindNavHandlers() {
 }
 
 function handleNavClick(pageName) {
-  closeNavOverlay();
   if (pageName === 'settings' || pageName === 'contacts') {
     showToast('Всё ещё в разработке 🛠️');
     return;
@@ -589,6 +588,7 @@ function handleNavClick(pageName) {
 function goToPage(pageName, animate = true) {
   currentPage = pageName;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.getAttribute('data-page') === pageName));
+  updateBottomNavActive(pageName);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active', 'page-anim-right', 'page-anim-left'));
   const target = document.getElementById('page-' + pageName);
   if (!target) return;
@@ -602,15 +602,14 @@ function goToPage(pageName, animate = true) {
   }
 }
 
-// ---------- Мобильное меню-оверлей ----------
-const navOverlay = document.getElementById('nav-overlay');
-function openNavOverlay() { navOverlay.classList.add('open'); }
-function closeNavOverlay() { navOverlay.classList.remove('open'); }
-document.getElementById('mobile-nav-btn').addEventListener('click', openNavOverlay);
-navOverlay.addEventListener('click', e => { if (e.target === navOverlay) closeNavOverlay(); });
-navOverlay.querySelectorAll('.nav-overlay-item').forEach(btn => {
+// ---------- Нижняя навигация (мобильный) ----------
+const bottomNav = document.getElementById('bottom-nav');
+bottomNav.querySelectorAll('.bottom-nav-item').forEach(btn => {
   btn.addEventListener('click', () => handleNavClick(btn.getAttribute('data-page')));
 });
+function updateBottomNavActive(pageName) {
+  bottomNav.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.toggle('active', b.getAttribute('data-page') === pageName));
+}
 
 // ---------- Профиль ----------
 async function saveProfile() {
