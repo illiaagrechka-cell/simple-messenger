@@ -123,11 +123,63 @@ app.post('/api/login', async (req, res) => {
 
 // --- Проверка токена (для автоматического входа при открытии страницы) ---
 app.get('/api/me', requireAuth, async (req, res) => {
-  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, _id: 0 } });
-  res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null });
+  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, lastSeen: 1, _id: 0 } });
+  res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null, lastSeen: (user && user.lastSeen) || null });
 });
 
-// --- Смена своего ника и/или аватарки (логин остаётся прежним) ---
+// --- "Пульс": обновляет отметку "был(а) в сети только что" ---
+app.post('/api/heartbeat', requireAuth, async (req, res) => {
+  const now = Date.now();
+  await users.updateOne({ username: req.username }, { $set: { lastSeen: now } });
+  res.json({ lastSeen: now });
+});
+
+// --- Смена логина (имени для входа) — требует подтверждения паролем ---
+app.patch('/api/account/username', requireAuth, async (req, res) => {
+  try {
+    const { newUsername, password } = req.body || {};
+    const clean = (newUsername || '').trim().toLowerCase();
+
+    if (!clean || /\s/.test(clean) || clean.length > 30) {
+      return res.status(400).json({ error: 'Некорректный логин.' });
+    }
+    if (!password) {
+      return res.status(400).json({ error: 'Введите текущий пароль для подтверждения.' });
+    }
+
+    const user = await users.findOne({ username: req.username });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+
+    const hash = hashPassword(password, user.salt);
+    if (hash !== user.hash) {
+      return res.status(401).json({ error: 'Неверный пароль.' });
+    }
+
+    if (clean === req.username) {
+      return res.json({ username: clean });
+    }
+
+    const taken = await users.findOne({ username: clean });
+    if (taken) {
+      return res.status(409).json({ error: 'Этот логин уже занят.' });
+    }
+
+    const oldUsername = req.username;
+    await users.updateOne({ username: oldUsername }, { $set: { username: clean } });
+    await messages.updateMany({ from: oldUsername }, { $set: { from: clean } });
+    await messages.updateMany({ to: oldUsername }, { $set: { to: clean } });
+    await sessions.updateMany({ username: oldUsername }, { $set: { username: clean } });
+    await contacts.updateMany({ owner: oldUsername }, { $set: { owner: clean } });
+    await contacts.updateMany({ contact: oldUsername }, { $set: { contact: clean } });
+
+    res.json({ username: clean });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Ошибка сервера при смене логина.' });
+  }
+});
+
+// --- Смена своего ника и/или аватарки (отображаемое имя) ---
 app.patch('/api/profile', requireAuth, async (req, res) => {
   const { nickname, avatar } = req.body || {};
   const update = {};
@@ -159,10 +211,10 @@ app.patch('/api/profile', requireAuth, async (req, res) => {
   res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null });
 });
 
-// --- Публичная информация о другом пользователе (ник, аватарка) ---
+// --- Публичная информация о другом пользователе (ник, аватарка, был(а) в сети) ---
 app.get('/api/profile/:username', requireAuth, async (req, res) => {
   const uname = (req.params.username || '').trim().toLowerCase();
-  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, avatar: 1, _id: 0 } });
+  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, avatar: 1, lastSeen: 1, _id: 0 } });
   if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
   res.json(user);
 });
@@ -221,17 +273,19 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
 
   const partners = Array.from(byPartner.keys());
   const [partnerUsers, myContacts] = await Promise.all([
-    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, avatar: 1, _id: 0 }).toArray(),
+    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, avatar: 1, lastSeen: 1, _id: 0 }).toArray(),
     contacts.find({ owner: req.username, contact: { $in: partners } }).project({ contact: 1, alias: 1, _id: 0 }).toArray()
   ]);
   const nicknameByUser = new Map(partnerUsers.map(u => [u.username, u.nickname || null]));
   const avatarByUser = new Map(partnerUsers.map(u => [u.username, u.avatar || null]));
+  const lastSeenByUser = new Map(partnerUsers.map(u => [u.username, u.lastSeen || null]));
   const aliasByUser = new Map(myContacts.map(c => [c.contact, c.alias || null]));
 
   const list = Array.from(byPartner.values()).map(c => ({
     ...c,
     nickname: nicknameByUser.get(c.username) || null,
     avatar: avatarByUser.get(c.username) || null,
+    lastSeen: lastSeenByUser.get(c.username) || null,
     alias: aliasByUser.get(c.username) || null
   })).sort((a, b) => b.time - a.time);
 
