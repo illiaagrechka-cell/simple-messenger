@@ -9,6 +9,7 @@
   html, body { height: 100%; }
 
   :root {
+    --bottom-nav-h: 64px;
     --bg1: #ff9de2; --bg2: #a78bfa; --bg3: #60a5fa;
     --accent1: #a259ff; --accent2: #ff6fb0;
     --card-bg: #ffffff;
@@ -296,9 +297,9 @@
   .chats-page.show-chat .chat-list-pane { display: none; }
   .chats-page.show-chat .chat-view-pane { display: flex; }
   .chat-back-btn { display: flex; }
-  .conv-list { padding-bottom: 76px; }
-  .chat-input-row { margin-bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
-  .profile-page-inner { padding-bottom: 76px; }
+  .conv-list { padding-bottom: calc(var(--bottom-nav-h) + 12px); }
+  .chat-input-row { margin-bottom: calc(var(--bottom-nav-h) + 14px); }
+  .profile-page-inner { padding-bottom: calc(var(--bottom-nav-h) + 12px); }
 
   /* ---------- Раскладка: десктоп ---------- */
   @media (min-width: 860px) {
@@ -477,6 +478,7 @@ function setHeaderButtonsVisible(visible) {
   ['search-btn', 'dots-menu', 'bottom-nav'].forEach(id => {
     document.getElementById(id).classList.toggle('visible', visible);
   });
+  if (visible) setTimeout(measureBottomNavHeight, 0);
 }
 
 // ---------- Вход / регистрация ----------
@@ -648,6 +650,14 @@ bottomNav.querySelectorAll('.bottom-nav-item').forEach(btn => {
 function updateBottomNavActive(pageName) {
   bottomNav.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.toggle('active', b.getAttribute('data-page') === pageName));
 }
+
+function measureBottomNavHeight() {
+  if (!bottomNav.classList.contains('visible')) return;
+  const h = bottomNav.getBoundingClientRect().height;
+  if (h > 0) document.documentElement.style.setProperty('--bottom-nav-h', h + 'px');
+}
+window.addEventListener('resize', measureBottomNavHeight);
+window.addEventListener('orientationchange', () => setTimeout(measureBottomNavHeight, 150));
 
 // ---------- Профиль ----------
 function resizeImageToDataUrl(file, maxSize) {
