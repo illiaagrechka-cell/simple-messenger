@@ -47,7 +47,11 @@ function makeId() {
   return crypto.randomBytes(8).toString('hex');
 }
 
-app.use(express.json({ limit: '2mb' }));
+// Лимиты для медиафайлов в сообщениях (в символах base64-строки, это чуть больше исходного размера файла).
+const MAX_IMAGE_B64 = 3_500_000;   // ~2.5 МБ картинки после сжатия на клиенте
+const MAX_VIDEO_B64 = 11_000_000;  // ~8 МБ видео
+
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 async function requireAuth(req, res, next) {
@@ -267,7 +271,10 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
     const partner = m.from === req.username ? m.to : m.from;
     const existing = byPartner.get(partner);
     if (!existing || m.time > existing.time) {
-      byPartner.set(partner, { username: partner, lastText: m.text, time: m.time, lastFromMe: m.from === req.username });
+      let preview = m.text;
+      if (!preview && m.mediaType === 'image') preview = '📷 Фото';
+      if (!preview && m.mediaType === 'video') preview = '🎥 Видео';
+      byPartner.set(partner, { username: partner, lastText: preview, time: m.time, lastFromMe: m.from === req.username });
     }
   }
 
@@ -292,22 +299,44 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
   res.json(list);
 });
 
-// --- Отправка сообщения ---
+// --- Отправка сообщения (текст и/или фото/видео) ---
 app.post('/api/messages', requireAuth, async (req, res) => {
   try {
-    const { to, text } = req.body || {};
+    const { to, text, mediaType, mediaData } = req.body || {};
     const recipient = (to || '').trim().toLowerCase();
     const content = (text || '').trim();
 
-    if (!recipient || !content) {
-      return res.status(400).json({ error: 'Нужны получатель и текст сообщения.' });
+    if (!recipient) {
+      return res.status(400).json({ error: 'Нужен получатель.' });
     }
+
+    const hasMedia = !!mediaData;
+    if (!content && !hasMedia) {
+      return res.status(400).json({ error: 'Нужен текст или файл.' });
+    }
+
+    let cleanMediaType = null;
+    if (hasMedia) {
+      if (mediaType !== 'image' && mediaType !== 'video') {
+        return res.status(400).json({ error: 'Неподдерживаемый тип файла.' });
+      }
+      if (typeof mediaData !== 'string' || !mediaData.startsWith(`data:${mediaType}/`)) {
+        return res.status(400).json({ error: 'Файл повреждён или не того типа.' });
+      }
+      const limit = mediaType === 'image' ? MAX_IMAGE_B64 : MAX_VIDEO_B64;
+      if (mediaData.length > limit) {
+        return res.status(400).json({ error: mediaType === 'image' ? 'Картинка слишком большая.' : 'Видео слишком большое (максимум примерно 8 МБ).' });
+      }
+      cleanMediaType = mediaType;
+    }
+
     const recipientExists = await users.findOne({ username: recipient });
     if (!recipientExists) {
       return res.status(404).json({ error: 'Такого пользователя не существует.' });
     }
 
     const msg = { id: makeId(), from: req.username, to: recipient, text: content, time: Date.now() };
+    if (hasMedia) { msg.mediaType = cleanMediaType; msg.mediaData = mediaData; }
     await messages.insertOne(msg);
     delete msg._id;
     res.json(msg);
