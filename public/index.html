@@ -297,7 +297,7 @@
   .chats-page.show-chat .chat-view-pane { display: flex; }
   .chat-back-btn { display: flex; }
   .conv-list { padding-bottom: 76px; }
-  .chat-input-row { margin-bottom: 60px; }
+  .chat-input-row { margin-bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
   .profile-page-inner { padding-bottom: 76px; }
 
   /* ---------- Раскладка: десктоп ---------- */
