@@ -191,6 +191,21 @@
   .conv-item.selected { outline: 2px solid var(--accent1); }
   .conv-item-main { flex: 1; min-width: 0; }
   .conv-name { font-size: 14px; font-weight: 800; color: var(--text-main); }
+
+  .avatar {
+    border-radius: 50%; object-fit: cover; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    color: #fff; font-weight: 800;
+  }
+  .avatar-sm { width: 38px; height: 38px; font-size: 14px; }
+  .avatar-md { width: 44px; height: 44px; font-size: 16px; }
+  .avatar-lg { width: 88px; height: 88px; font-size: 30px; }
+  .conv-item { align-items: center; }
+  .conv-avatar-wrap { flex-shrink: 0; }
+  .avatar-edit-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .avatar-edit-actions { display: flex; gap: 8px; }
+  .avatar-edit-actions button { width: auto; padding: 8px 14px; font-size: 13px; }
   .conv-preview { font-size: 13px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .conv-actions { display: flex; gap: 4px; flex-shrink: 0; }
   .conv-alias-btn, .conv-delete-btn { width: auto; padding: 6px 9px; box-shadow: none; font-size: 13px; flex-shrink: 0; }
@@ -417,6 +432,7 @@ const API = '';
 let token = localStorage.getItem('token') || null;
 let me = localStorage.getItem('me') || null;
 let myNickname = null;
+let myAvatar = null;
 let peer = '';
 let currentPeerAlias = null;
 let currentPeerNickname = null;
@@ -494,7 +510,7 @@ async function submitAuth() {
     token = data.token; me = data.username;
     localStorage.setItem('token', token);
     localStorage.setItem('me', me);
-    try { const meInfo = await api('/api/me'); myNickname = meInfo.nickname; } catch (e) { myNickname = null; }
+    try { const meInfo = await api('/api/me'); myNickname = meInfo.nickname; myAvatar = meInfo.avatar; } catch (e) { myNickname = null; myAvatar = null; }
     currentPage = 'chats';
     renderApp();
   } catch (e) {
@@ -549,6 +565,15 @@ function renderApp() {
               <button class="chat-back-btn" id="profile-back-btn" style="display:flex;">←</button>
               <h1>Профиль</h1>
             </div>
+            <div class="avatar-edit-wrap">
+              <div id="avatar-preview"></div>
+              <input type="file" id="avatar-file-input" accept="image/*" style="display:none;" />
+              <div class="avatar-edit-actions">
+                <button type="button" id="avatar-choose-btn" class="secondary">Загрузить фото</button>
+                <button type="button" id="avatar-remove-btn" class="secondary">Убрать</button>
+              </div>
+              <div id="avatar-error" class="error"></div>
+            </div>
             <div class="modal-row">
               <span class="modal-label">Логин (для входа)</span>
               <span class="modal-value" id="profile-username-display"></span>
@@ -576,6 +601,10 @@ function bindNavHandlers() {
   document.getElementById('profile-save-btn').onclick = saveProfile;
   document.getElementById('profile-logout-btn').onclick = logout;
   document.getElementById('nickname-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveProfile(); });
+
+  document.getElementById('avatar-choose-btn').onclick = () => document.getElementById('avatar-file-input').click();
+  document.getElementById('avatar-file-input').addEventListener('change', handleAvatarFile);
+  document.getElementById('avatar-remove-btn').onclick = removeAvatar;
 }
 
 function handleNavClick(pageName) {
@@ -600,7 +629,15 @@ function goToPage(pageName, animate = true) {
     document.getElementById('profile-username-display').textContent = me;
     document.getElementById('nickname-input').value = myNickname || '';
     document.getElementById('profile-error').textContent = '';
+    document.getElementById('avatar-error').textContent = '';
+    renderAvatarPreview();
   }
+}
+
+function renderAvatarPreview() {
+  const el = document.getElementById('avatar-preview');
+  if (!el) return;
+  el.innerHTML = avatarHtml(myAvatar, myNickname || me, 'avatar-lg');
 }
 
 // ---------- Нижняя навигация (мобильный) ----------
@@ -613,6 +650,58 @@ function updateBottomNavActive(pageName) {
 }
 
 // ---------- Профиль ----------
+function resizeImageToDataUrl(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл.'));
+    reader.onload = () => { img.src = reader.result; };
+    img.onerror = () => reject(new Error('Файл не похож на картинку.'));
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height) { if (width > maxSize) { height = Math.round(height * (maxSize / width)); width = maxSize; } }
+      else { if (height > maxSize) { width = Math.round(width * (maxSize / height)); height = maxSize; } }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAvatarFile(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const errorEl = document.getElementById('avatar-error');
+  errorEl.textContent = '';
+  if (!file.type.startsWith('image/')) { errorEl.textContent = 'Нужен файл картинки.'; return; }
+  try {
+    const dataUrl = await resizeImageToDataUrl(file, 200);
+    const data = await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ avatar: dataUrl }) });
+    myAvatar = data.avatar;
+    renderAvatarPreview();
+    loadConversations();
+    showToast('Аватарка обновлена');
+  } catch (err) {
+    errorEl.textContent = err.message;
+  }
+}
+
+async function removeAvatar() {
+  try {
+    const data = await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ avatar: null }) });
+    myAvatar = data.avatar;
+    renderAvatarPreview();
+    loadConversations();
+    showToast('Аватарка убрана');
+  } catch (err) {
+    document.getElementById('avatar-error').textContent = err.message;
+  }
+}
+
 async function saveProfile() {
   try {
     const nickname = document.getElementById('nickname-input').value.trim();
@@ -626,6 +715,14 @@ async function saveProfile() {
 }
 
 // ---------- Чаты: список ----------
+function avatarHtml(avatarUrl, name, sizeClass) {
+  if (avatarUrl) {
+    return `<img class="avatar ${sizeClass}" src="${avatarUrl}" alt="" />`;
+  }
+  const letter = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  return `<div class="avatar ${sizeClass}">${esc(letter)}</div>`;
+}
+
 async function loadConversations() {
   const box = document.getElementById('conv-list');
   if (!box) return;
@@ -640,8 +737,10 @@ async function loadConversations() {
   box.innerHTML = list.map(c => {
     const isFavorites = c.username === me;
     const name = isFavorites ? '⭐ Избранное' : (c.alias || c.nickname || c.username);
+    const avatar = isFavorites ? null : c.avatar;
     return `
     <div class="conv-item ${c.username === peer ? 'selected' : ''}" data-u="${esc(c.username)}" data-alias="${esc(c.alias || '')}">
+      <div class="conv-avatar-wrap">${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(avatar, name, 'avatar-sm')}</div>
       <div class="conv-item-main">
         <div class="conv-name">${esc(name)}</div>
         <div class="conv-preview">${c.lastFromMe && !isFavorites ? 'Вы: ' : ''}${esc(c.lastText)}</div>
@@ -693,6 +792,7 @@ async function openChat(username) {
   const isFavorites = peer === me;
 
   let displayName;
+  let peerAvatar = null;
   currentPeerAlias = null; currentPeerNickname = null;
 
   if (isFavorites) {
@@ -705,6 +805,7 @@ async function openChat(username) {
       ]);
       currentPeerNickname = profile.nickname;
       currentPeerAlias = contact.alias;
+      peerAvatar = profile.avatar;
       displayName = currentPeerAlias || currentPeerNickname || peer;
     } catch (e) {
       pane.innerHTML = `<div class="chat-placeholder">${esc(e.message)}</div>`;
@@ -715,6 +816,7 @@ async function openChat(username) {
   pane.innerHTML = `
     <div class="chat-header">
       <button class="chat-back-btn" id="chat-back-btn">←</button>
+      ${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(peerAvatar, displayName, 'avatar-sm')}
       <span class="muted">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b></span>
       ${isFavorites ? '' : '<button class="chat-alias-btn" id="chat-alias-btn">✎ подпись</button>'}
     </div>
@@ -774,7 +876,7 @@ async function sendMessage() {
 
 // ---------- Инициализация ----------
 if (token && me) {
-  api('/api/me').then(data => { myNickname = data.nickname; renderApp(); }).catch(() => {
+  api('/api/me').then(data => { myNickname = data.nickname; myAvatar = data.avatar; renderApp(); }).catch(() => {
     localStorage.removeItem('token'); localStorage.removeItem('me');
     token = null; me = null; renderAuth();
   });
