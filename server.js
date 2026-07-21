@@ -47,7 +47,7 @@ function makeId() {
   return crypto.randomBytes(8).toString('hex');
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 async function requireAuth(req, res, next) {
@@ -123,25 +123,46 @@ app.post('/api/login', async (req, res) => {
 
 // --- Проверка токена (для автоматического входа при открытии страницы) ---
 app.get('/api/me', requireAuth, async (req, res) => {
-  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, _id: 0 } });
-  res.json({ username: req.username, nickname: (user && user.nickname) || null });
+  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, _id: 0 } });
+  res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null });
 });
 
-// --- Смена своего ника (отображаемого имени, логин остаётся прежним) ---
+// --- Смена своего ника и/или аватарки (логин остаётся прежним) ---
 app.patch('/api/profile', requireAuth, async (req, res) => {
-  const { nickname } = req.body || {};
-  const nick = (nickname || '').trim();
-  if (nick.length > 40) {
-    return res.status(400).json({ error: 'Ник слишком длинный.' });
+  const { nickname, avatar } = req.body || {};
+  const update = {};
+
+  if (nickname !== undefined) {
+    const nick = (nickname || '').trim();
+    if (nick.length > 40) {
+      return res.status(400).json({ error: 'Ник слишком длинный.' });
+    }
+    update.nickname = nick || null;
   }
-  await users.updateOne({ username: req.username }, { $set: { nickname: nick || null } });
-  res.json({ username: req.username, nickname: nick || null });
+
+  if (avatar !== undefined) {
+    if (avatar === null || avatar === '') {
+      update.avatar = null;
+    } else {
+      if (typeof avatar !== 'string' || !avatar.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Аватарка должна быть картинкой.' });
+      }
+      if (avatar.length > 600000) {
+        return res.status(400).json({ error: 'Картинка слишком большая. Попробуйте другую или уменьшите её.' });
+      }
+      update.avatar = avatar;
+    }
+  }
+
+  await users.updateOne({ username: req.username }, { $set: update });
+  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, _id: 0 } });
+  res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null });
 });
 
-// --- Публичная информация о другом пользователе (ник) ---
+// --- Публичная информация о другом пользователе (ник, аватарка) ---
 app.get('/api/profile/:username', requireAuth, async (req, res) => {
   const uname = (req.params.username || '').trim().toLowerCase();
-  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, _id: 0 } });
+  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, avatar: 1, _id: 0 } });
   if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
   res.json(user);
 });
@@ -200,15 +221,17 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
 
   const partners = Array.from(byPartner.keys());
   const [partnerUsers, myContacts] = await Promise.all([
-    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, _id: 0 }).toArray(),
+    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, avatar: 1, _id: 0 }).toArray(),
     contacts.find({ owner: req.username, contact: { $in: partners } }).project({ contact: 1, alias: 1, _id: 0 }).toArray()
   ]);
   const nicknameByUser = new Map(partnerUsers.map(u => [u.username, u.nickname || null]));
+  const avatarByUser = new Map(partnerUsers.map(u => [u.username, u.avatar || null]));
   const aliasByUser = new Map(myContacts.map(c => [c.contact, c.alias || null]));
 
   const list = Array.from(byPartner.values()).map(c => ({
     ...c,
     nickname: nicknameByUser.get(c.username) || null,
+    avatar: avatarByUser.get(c.username) || null,
     alias: aliasByUser.get(c.username) || null
   })).sort((a, b) => b.time - a.time);
 
