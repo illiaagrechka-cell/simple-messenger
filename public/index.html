@@ -176,6 +176,21 @@
   .page-anim-right { animation: slideInRight 0.28s ease; }
   .page-anim-left { animation: slideInLeft 0.28s ease; }
 
+  @keyframes chatSlideIn {
+    from { transform: translateX(36px) scale(0.98); opacity: 0; }
+    to { transform: translateX(0) scale(1); opacity: 1; }
+  }
+  @keyframes chatSlideBack {
+    from { transform: translateX(-24px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes bubblePop {
+    from { transform: translateY(6px) scale(0.9); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .chat-anim-in { animation: chatSlideIn 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  .chat-anim-back { animation: chatSlideBack 0.24s ease; }
+
   /* Страница чатов */
   .chats-page { width: 100%; }
   .chat-list-pane { display: flex; flex-direction: column; background: var(--pane-bg); min-height: 0; }
@@ -203,6 +218,11 @@
   .avatar-sm { width: 38px; height: 38px; font-size: 14px; }
   .avatar-md { width: 44px; height: 44px; font-size: 16px; }
   .avatar-lg { width: 88px; height: 88px; font-size: 30px; }
+  .status-dot {
+    position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px;
+    border-radius: 50%; background: #2ecc71; border: 2px solid var(--card-bg);
+  }
+  .chat-status-text { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
   .conv-item { align-items: center; }
   .conv-avatar-wrap { flex-shrink: 0; }
   .avatar-edit-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -422,6 +442,20 @@
   </div>
 </div>
 
+<div id="username-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Изменить логин</div>
+    <div class="muted" style="margin-bottom:10px;">Логин используется для входа в аккаунт. После смены им же нужно будет входить в следующий раз.</div>
+    <input id="new-username-input" placeholder="новый логин (без пробелов)" />
+    <input id="username-password-input" type="password" placeholder="текущий пароль (для подтверждения)" />
+    <div id="username-error" class="error"></div>
+    <div class="row">
+      <button id="username-save-btn">Сохранить</button>
+      <button id="username-close-btn" class="secondary">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const root = document.getElementById('root');
 const API = '';
@@ -515,8 +549,21 @@ async function submitAuth() {
   }
 }
 
+let heartbeatTimer = null;
+function startHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  api('/api/heartbeat', { method: 'POST' }).catch(() => {});
+  heartbeatTimer = setInterval(() => { api('/api/heartbeat', { method: 'POST' }).catch(() => {}); }, 20000);
+}
+function stopHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
 function logout() {
   if (pollTimer) clearInterval(pollTimer);
+  if (peerStatusTimer) clearInterval(peerStatusTimer);
+  stopHeartbeat();
   localStorage.removeItem('token');
   localStorage.removeItem('me');
   token = null; me = null; peer = ''; myNickname = null;
@@ -526,6 +573,7 @@ function logout() {
 // ---------- Оболочка приложения ----------
 function renderApp() {
   setHeaderButtonsVisible(true);
+  startHeartbeat();
   root.innerHTML = `
     <div class="app-shell">
       <nav class="nav-rail" id="nav-rail">
@@ -571,9 +619,12 @@ function renderApp() {
               </div>
               <div id="avatar-error" class="error"></div>
             </div>
-            <div class="modal-row">
-              <span class="modal-label">Логин (для входа)</span>
-              <span class="modal-value" id="profile-username-display"></span>
+            <div class="modal-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div>
+                <span class="modal-label">Логин (для входа)</span>
+                <span class="modal-value" id="profile-username-display"></span>
+              </div>
+              <button type="button" id="change-username-btn" class="secondary" style="width:auto;padding:6px 12px;font-size:12px;">Изменить</button>
             </div>
             <input id="nickname-input" placeholder="Ваш ник (видят другие)" style="margin-top:10px;" />
             <div id="profile-error" class="error"></div>
@@ -602,6 +653,7 @@ function bindNavHandlers() {
   document.getElementById('avatar-choose-btn').onclick = () => document.getElementById('avatar-file-input').click();
   document.getElementById('avatar-file-input').addEventListener('change', handleAvatarFile);
   document.getElementById('avatar-remove-btn').onclick = removeAvatar;
+  document.getElementById('change-username-btn').onclick = openUsernameModal;
 }
 
 function handleNavClick(pageName) {
@@ -743,7 +795,7 @@ async function loadConversations() {
     const avatar = isFavorites ? null : c.avatar;
     return `
     <div class="conv-item ${c.username === peer ? 'selected' : ''}" data-u="${esc(c.username)}" data-alias="${esc(c.alias || '')}">
-      <div class="conv-avatar-wrap">${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(avatar, name, 'avatar-sm')}</div>
+      <div class="conv-avatar-wrap" style="position:relative;">${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(avatar, name, 'avatar-sm')}${(!isFavorites && isOnline(c.lastSeen)) ? '<span class="status-dot"></span>' : ''}</div>
       <div class="conv-item-main">
         <div class="conv-name">${esc(name)}</div>
         <div class="conv-preview">${c.lastFromMe && !isFavorites ? 'Вы: ' : ''}${esc(c.lastText)}</div>
@@ -780,9 +832,29 @@ async function deleteConversation(withUser) {
 }
 
 function showChatPlaceholder() {
-  document.getElementById('chat-view-pane').innerHTML = '<div class="chat-placeholder">Выберите чат, чтобы написать</div>';
+  const pane = document.getElementById('chat-view-pane');
+  pane.classList.remove('chat-anim-in', 'chat-anim-back');
+  void pane.offsetWidth;
+  pane.innerHTML = '<div class="chat-placeholder">Выберите чат, чтобы написать</div>';
+  pane.classList.add('chat-anim-back');
   document.getElementById('page-chats').classList.remove('show-chat');
 }
+
+const ONLINE_THRESHOLD_MS = 45000;
+function isOnline(lastSeen) { return !!lastSeen && (Date.now() - lastSeen) < ONLINE_THRESHOLD_MS; }
+function formatLastSeen(lastSeen) {
+  if (!lastSeen) return 'не в сети';
+  if (isOnline(lastSeen)) return 'в сети';
+  const diffMin = Math.floor((Date.now() - lastSeen) / 60000);
+  if (diffMin < 1) return 'был(а) в сети только что';
+  if (diffMin < 60) return `был(а) в сети ${diffMin} мин назад`;
+  const d = new Date(lastSeen);
+  const sameDay = new Date().toDateString() === d.toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? `был(а) в сети в ${time}` : `был(а) в сети ${d.toLocaleDateString()}`;
+}
+
+let peerStatusTimer = null;
 
 // ---------- Чаты: открытая переписка ----------
 async function openChat(username) {
@@ -790,12 +862,14 @@ async function openChat(username) {
   goToPage('chats', false);
   document.getElementById('page-chats').classList.add('show-chat');
   if (pollTimer) clearInterval(pollTimer);
+  if (peerStatusTimer) clearInterval(peerStatusTimer);
 
   const pane = document.getElementById('chat-view-pane');
   const isFavorites = peer === me;
 
   let displayName;
   let peerAvatar = null;
+  let peerLastSeen = null;
   currentPeerAlias = null; currentPeerNickname = null;
 
   if (isFavorites) {
@@ -809,6 +883,7 @@ async function openChat(username) {
       currentPeerNickname = profile.nickname;
       currentPeerAlias = contact.alias;
       peerAvatar = profile.avatar;
+      peerLastSeen = profile.lastSeen;
       displayName = currentPeerAlias || currentPeerNickname || peer;
     } catch (e) {
       pane.innerHTML = `<div class="chat-placeholder">${esc(e.message)}</div>`;
@@ -816,11 +891,19 @@ async function openChat(username) {
     }
   }
 
+  pane.classList.remove('chat-anim-in', 'chat-anim-back');
+  void pane.offsetWidth;
   pane.innerHTML = `
     <div class="chat-header">
       <button class="chat-back-btn" id="chat-back-btn">←</button>
-      ${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(peerAvatar, displayName, 'avatar-sm')}
-      <span class="muted">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b></span>
+      <div style="position:relative;flex-shrink:0;">
+        ${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(peerAvatar, displayName, 'avatar-sm')}
+        ${(!isFavorites && isOnline(peerLastSeen)) ? '<span class="status-dot" id="chat-status-dot"></span>' : ''}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b></div>
+        ${isFavorites ? '' : `<div class="chat-status-text" id="chat-status-text">${esc(formatLastSeen(peerLastSeen))}</div>`}
+      </div>
       ${isFavorites ? '' : '<button class="chat-alias-btn" id="chat-alias-btn">✎ подпись</button>'}
     </div>
     <div class="messages" id="messages"></div>
@@ -829,10 +912,28 @@ async function openChat(username) {
       <button id="send-btn">Отправить</button>
     </div>
   `;
-  document.getElementById('chat-back-btn').onclick = () => { peer = ''; showChatPlaceholder(); loadConversations(); };
+  pane.classList.add('chat-anim-in');
+  document.getElementById('chat-back-btn').onclick = () => { peer = ''; if (peerStatusTimer) clearInterval(peerStatusTimer); showChatPlaceholder(); loadConversations(); };
   document.getElementById('send-btn').onclick = sendMessage;
   document.getElementById('msg-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
   if (!isFavorites) document.getElementById('chat-alias-btn').onclick = () => openAliasModal(peer, currentPeerAlias);
+
+  if (!isFavorites) {
+    peerStatusTimer = setInterval(async () => {
+      try {
+        const p = await api('/api/profile/' + encodeURIComponent(peer));
+        const statusEl = document.getElementById('chat-status-text');
+        if (statusEl) statusEl.textContent = formatLastSeen(p.lastSeen);
+        const dot = document.getElementById('chat-status-dot');
+        const wrap = dot ? dot.parentElement : null;
+        if (wrap && isOnline(p.lastSeen) && !dot) {
+          const d = document.createElement('span'); d.className = 'status-dot'; d.id = 'chat-status-dot'; wrap.appendChild(d);
+        } else if (dot && !isOnline(p.lastSeen)) {
+          dot.remove();
+        }
+      } catch (e) {}
+    }, 15000);
+  }
 
   await loadMessages();
   pollTimer = setInterval(loadMessages, 2500);
@@ -980,6 +1081,43 @@ async function saveAlias() {
 }
 document.getElementById('alias-save-btn').addEventListener('click', saveAlias);
 aliasInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveAlias(); });
+
+// ---------- Модалка смены логина ----------
+const usernameOverlay = document.getElementById('username-modal-overlay');
+const newUsernameInput = document.getElementById('new-username-input');
+const usernamePasswordInput = document.getElementById('username-password-input');
+const usernameError = document.getElementById('username-error');
+
+function openUsernameModal() {
+  newUsernameInput.value = me;
+  usernamePasswordInput.value = '';
+  usernameError.textContent = '';
+  usernameOverlay.classList.add('open');
+  setTimeout(() => newUsernameInput.focus(), 0);
+}
+function closeUsernameModal() { usernameOverlay.classList.remove('open'); }
+document.getElementById('username-close-btn').addEventListener('click', closeUsernameModal);
+usernameOverlay.addEventListener('click', e => { if (e.target === usernameOverlay) closeUsernameModal(); });
+
+async function saveUsername() {
+  const newUsername = newUsernameInput.value.trim().toLowerCase();
+  const password = usernamePasswordInput.value;
+  if (!newUsername || /\s/.test(newUsername)) { usernameError.textContent = 'Логин не может быть пустым или содержать пробелы.'; return; }
+  if (!password) { usernameError.textContent = 'Введите текущий пароль.'; return; }
+  try {
+    const data = await api('/api/account/username', { method: 'PATCH', body: JSON.stringify({ newUsername, password }) });
+    me = data.username;
+    localStorage.setItem('me', me);
+    closeUsernameModal();
+    showToast('Логин изменён');
+    document.getElementById('profile-username-display').textContent = me;
+    loadConversations();
+  } catch (e) {
+    usernameError.textContent = e.message;
+  }
+}
+document.getElementById('username-save-btn').addEventListener('click', saveUsername);
+usernamePasswordInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveUsername(); });
 </script>
 </body>
 </html>
