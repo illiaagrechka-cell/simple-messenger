@@ -9,7 +9,7 @@
   html, body { height: 100%; }
 
   :root {
-    --bottom-nav-h: 64px;
+    --bottom-nav-h: 90px;
     --bg1: #ff9de2; --bg2: #a78bfa; --bg3: #60a5fa;
     --accent1: #a259ff; --accent2: #ff6fb0;
     --card-bg: #ffffff;
@@ -298,7 +298,7 @@
   .chats-page.show-chat .chat-view-pane { display: flex; }
   .chat-back-btn { display: flex; }
   .conv-list { padding-bottom: calc(var(--bottom-nav-h) + 12px); }
-  .chat-input-row { margin-bottom: calc(var(--bottom-nav-h) + 14px); }
+  .chat-input-row { margin-bottom: calc(var(--bottom-nav-h) + 40px); }
   .profile-page-inner { padding-bottom: calc(var(--bottom-nav-h) + 12px); }
 
   /* ---------- Раскладка: десктоп ---------- */
@@ -652,9 +652,7 @@ function updateBottomNavActive(pageName) {
 }
 
 function measureBottomNavHeight() {
-  if (!bottomNav.classList.contains('visible')) return;
-  const h = bottomNav.getBoundingClientRect().height;
-  if (h > 0) document.documentElement.style.setProperty('--bottom-nav-h', h + 'px');
+  // отключено: полагаемся на фиксированный запас в CSS (--bottom-nav-h)
 }
 window.addEventListener('resize', measureBottomNavHeight);
 window.addEventListener('orientationchange', () => setTimeout(measureBottomNavHeight, 150));
