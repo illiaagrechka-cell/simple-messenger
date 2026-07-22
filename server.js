@@ -16,7 +16,7 @@ if (!MONGODB_URI) {
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
 
 let db;
-let users, messages, sessions, contacts, bugreports;
+let users, messages, sessions, contacts, bugreports, reads;
 
 async function start() {
   const client = new MongoClient(MONGODB_URI);
@@ -27,6 +27,7 @@ async function start() {
   sessions = db.collection('sessions');
   contacts = db.collection('contacts');
   bugreports = db.collection('bugreports');
+  reads = db.collection('reads');
 
   // Индексы для скорости и уникальности имён пользователей.
   await users.createIndex({ username: 1 }, { unique: true });
@@ -35,6 +36,7 @@ async function start() {
   await sessions.createIndex({ token: 1 }, { unique: true });
   await contacts.createIndex({ owner: 1, contact: 1 }, { unique: true });
   await bugreports.createIndex({ time: -1 });
+  await reads.createIndex({ owner: 1, peer: 1 }, { unique: true });
 
   app.listen(PORT, () => {
     console.log(`Мессенджер запущен: http://localhost:${PORT}`);
@@ -289,6 +291,10 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
   const all = await messages.find({ $or: [{ from: req.username }, { to: req.username }] }).toArray();
   const byPartner = new Map();
 
+  const readRows = await reads.find({ owner: req.username }).project({ peer: 1, lastReadTime: 1, _id: 0 }).toArray();
+  const lastReadByPeer = new Map(readRows.map(r => [r.peer, r.lastReadTime || 0]));
+  const unreadByPartner = new Map();
+
   for (const m of all) {
     const partner = m.from === req.username ? m.to : m.from;
     const existing = byPartner.get(partner);
@@ -297,6 +303,12 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
       if (!preview && m.mediaType === 'image') preview = '📷 Фото';
       if (!preview && m.mediaType === 'video') preview = '🎥 Видео';
       byPartner.set(partner, { username: partner, lastText: preview, time: m.time, lastFromMe: m.from === req.username });
+    }
+    if (m.to === req.username && m.from !== req.username) {
+      const lastRead = lastReadByPeer.get(partner) || 0;
+      if (m.time > lastRead) {
+        unreadByPartner.set(partner, (unreadByPartner.get(partner) || 0) + 1);
+      }
     }
   }
 
@@ -315,7 +327,8 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
     nickname: nicknameByUser.get(c.username) || null,
     avatar: avatarByUser.get(c.username) || null,
     lastSeen: lastSeenByUser.get(c.username) || null,
-    alias: aliasByUser.get(c.username) || null
+    alias: aliasByUser.get(c.username) || null,
+    unread: unreadByPartner.get(c.username) || 0
   })).sort((a, b) => b.time - a.time);
 
   res.json(list);
@@ -377,6 +390,14 @@ app.get('/api/messages/:withUser', requireAuth, async (req, res) => {
       { from: other, to: req.username }
     ]
   }).sort({ time: 1 }).project({ _id: 0 }).toArray();
+
+  // Открытие переписки считается прочтением всех сообщений от собеседника до этого момента.
+  await reads.updateOne(
+    { owner: req.username, peer: other },
+    { $set: { lastReadTime: Date.now() } },
+    { upsert: true }
+  );
+
   res.json(thread);
 });
 
@@ -438,6 +459,7 @@ app.delete('/api/conversations/:withUser', requireAuth, async (req, res) => {
       { from: other, to: req.username }
     ]
   });
+  await reads.deleteOne({ owner: req.username, peer: other });
   res.json({ deletedWith: other });
 });
 
