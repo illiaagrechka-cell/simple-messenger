@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Утюг мессенджер</title>
+<title>Простой мессенджер</title>
 <link rel="icon" type="image/jpeg" href="/logo.jpg" />
 <style>
   * { box-sizing: border-box; }
@@ -256,6 +256,73 @@
   .msg.mine .time { text-align: right; }
   .msg-delete-btn { width: auto; padding: 3px 7px; font-size: 11px; background: var(--danger-bg); color: var(--danger-text); box-shadow: none; opacity: 0.75; flex-shrink: 0; }
   .msg-delete-btn:hover { opacity: 1; }
+
+  /* ---------- Реакции на сообщения ---------- */
+  .bubble { position: relative; }
+  .msg-reactions { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+  .msg.mine .msg-reactions { justify-content: flex-end; }
+  .reaction-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--card-bg); border: 1px solid var(--input-border);
+    border-radius: 999px; padding: 2px 8px; font-size: 14px; line-height: 1.5;
+    box-shadow: 0 2px 6px rgba(20,10,40,0.12);
+    transform-origin: center bottom;
+    cursor: default;
+  }
+  .reaction-badge.mine-reaction { border-color: var(--accent1); background: var(--chip-bg); }
+  .reaction-badge.reaction-pop { animation: reactionBadgeIn 0.55s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+  @keyframes reactionBadgeIn {
+    0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+    55%  { transform: scale(1.35) rotate(10deg); opacity: 1; }
+    75%  { transform: scale(0.88) rotate(-5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* Всплывающее меню выбора реакции (по правому клику / долгому тапу) */
+  .reaction-picker {
+    position: fixed; z-index: 60;
+    display: flex; gap: 2px; padding: 7px 9px;
+    background: var(--card-bg); border-radius: 999px;
+    box-shadow: 0 14px 34px rgba(20,10,40,0.35);
+    animation: reactionPickerIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: center bottom;
+  }
+  .reaction-picker.closing { animation: reactionPickerOut 0.14s ease forwards; }
+
+  @keyframes reactionPickerIn {
+    0%   { transform: scale(0.4) translateY(14px); opacity: 0; }
+    60%  { transform: scale(1.1) translateY(-3px); opacity: 1; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  @keyframes reactionPickerOut {
+    from { transform: scale(1); opacity: 1; }
+    to   { transform: scale(0.75) translateY(6px); opacity: 0; }
+  }
+
+  .reaction-emoji-btn {
+    width: 38px; height: 38px; padding: 0; border-radius: 50%;
+    background: transparent; box-shadow: none; font-size: 21px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transform: scale(0);
+    animation: emojiPopIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .reaction-emoji-btn:hover { background: var(--chip-bg); transform: scale(1.25) translateY(-3px); }
+  .reaction-emoji-btn:active { transform: scale(0.95); }
+  .reaction-emoji-btn.active { background: var(--chip-bg); box-shadow: inset 0 0 0 2px var(--accent1); }
+  .reaction-emoji-btn.burst { animation: emojiBurst 0.28s ease; }
+
+  @keyframes emojiPopIn {
+    0%   { transform: scale(0) translateY(10px); opacity: 0; }
+    60%  { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  @keyframes emojiBurst {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.7); }
+    100% { transform: scale(1.25); }
+  }
   .chat-input-row { display: flex; gap: 8px; padding: 12px 16px; flex-shrink: 0; }
   .chat-input-row input { margin-bottom: 0; }
   .chat-input-row button { width: auto; padding: 11px 18px; }
@@ -919,10 +986,120 @@ function formatLastSeen(lastSeen) {
 
 let peerStatusTimer = null;
 
+// ---------- Реакции на сообщения ----------
+const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
+let reactionSnapshots = {};      // messageId -> JSON строка текущих реакций (для анимации только новых)
+let reactionsFirstLoadDone = false;
+let activeReactionPicker = null;
+let reactionPickerOpenedAt = 0;
+
+function closeReactionPicker(immediate) {
+  if (!activeReactionPicker) return;
+  const el = activeReactionPicker;
+  activeReactionPicker = null;
+  if (immediate) { el.remove(); return; }
+  el.classList.add('closing');
+  setTimeout(() => el.remove(), 140);
+}
+
+function openReactionPicker(x, y, messageId, currentEmoji) {
+  closeReactionPicker(true);
+  const picker = document.createElement('div');
+  picker.className = 'reaction-picker';
+  picker.innerHTML = REACTION_EMOJIS.map((em, i) =>
+    `<button type="button" class="reaction-emoji-btn ${em === currentEmoji ? 'active' : ''}" style="animation-delay:${i * 35}ms" data-emoji="${em}">${em}</button>`
+  ).join('');
+  document.body.appendChild(picker);
+
+  const rect = picker.getBoundingClientRect();
+  const width = rect.width || 260;
+  const height = rect.height || 54;
+  let left = x - width / 2;
+  let top = y - height - 14;
+  if (top < 8) top = y + 20;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+  picker.style.left = left + 'px';
+  picker.style.top = top + 'px';
+
+  picker.querySelectorAll('.reaction-emoji-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      btn.classList.add('burst');
+      const emoji = btn.getAttribute('data-emoji');
+      setTimeout(() => toggleReaction(messageId, emoji), 90);
+      closeReactionPicker();
+    };
+  });
+
+  activeReactionPicker = picker;
+  reactionPickerOpenedAt = Date.now();
+}
+
+document.addEventListener('click', () => {
+  if (Date.now() - reactionPickerOpenedAt < 300) return; // игнорируем «призрачный» клик сразу после долгого тапа
+  closeReactionPicker();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeReactionPicker(); });
+document.addEventListener('scroll', () => closeReactionPicker(true), true);
+window.addEventListener('resize', () => closeReactionPicker(true));
+
+async function toggleReaction(messageId, emoji) {
+  try {
+    await api('/api/messages/' + encodeURIComponent(messageId) + '/reaction', { method: 'POST', body: JSON.stringify({ emoji }) });
+    await loadMessages();
+  } catch (e) { showToast(e.message); }
+}
+
+function bindReactionTriggers(box, list) {
+  box.querySelectorAll('.msg:not(.mine) .bubble').forEach(bubble => {
+    const getContext = () => {
+      const mid = bubble.closest('.msg').getAttribute('data-mid');
+      const msgObj = list.find(mm => mm.id === mid);
+      const reactions = (msgObj && Array.isArray(msgObj.reactions)) ? msgObj.reactions : [];
+      const mine = reactions.find(r => r.user === me);
+      return { mid, current: mine ? mine.emoji : null };
+    };
+
+    bubble.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const { mid, current } = getContext();
+      openReactionPicker(e.clientX, e.clientY, mid, current);
+    });
+
+    // Долгий тап — аналог правого клика на мобильных устройствах.
+    let longPressTimer = null;
+    let longPressStart = null;
+    bubble.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      longPressStart = { x: touch.clientX, y: touch.clientY };
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        const { mid, current } = getContext();
+        openReactionPicker(touch.clientX, touch.clientY, mid, current);
+        if (navigator.vibrate) navigator.vibrate(12);
+      }, 480);
+    }, { passive: true });
+    bubble.addEventListener('touchmove', (e) => {
+      if (!longPressTimer) return;
+      const touch = e.touches[0];
+      if (Math.abs(touch.clientX - longPressStart.x) > 8 || Math.abs(touch.clientY - longPressStart.y) > 8) {
+        clearTimeout(longPressTimer); longPressTimer = null;
+      }
+    }, { passive: true });
+    ['touchend', 'touchcancel'].forEach(evt => bubble.addEventListener(evt, () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }));
+  });
+}
+
 // ---------- Чаты: открытая переписка ----------
 async function openChat(username) {
   peer = username;
   pendingAttachment = null;
+  closeReactionPicker(true);
+  reactionSnapshots = {};
+  reactionsFirstLoadDone = false;
   goToPage('chats', false);
   document.getElementById('page-chats').classList.add('show-chat');
   if (pollTimer) clearInterval(pollTimer);
@@ -1024,16 +1201,28 @@ async function loadMessages() {
       mediaHtml = `<video class="bubble-media bubble-media-video" src="${m.mediaData}" controls preload="metadata"></video>`;
     }
     const textHtml = m.text ? esc(m.text) : '';
-    return `<div class="msg ${mine ? 'mine' : ''}">
+
+    const reactions = Array.isArray(m.reactions) ? m.reactions : [];
+    const reactKey = JSON.stringify(reactions);
+    const isNew = reactionsFirstLoadDone && reactionSnapshots[m.id] !== reactKey;
+    reactionSnapshots[m.id] = reactKey;
+    const reactionsHtml = reactions.length
+      ? `<div class="msg-reactions">${reactions.map(r => `<span class="reaction-badge ${isNew ? 'reaction-pop' : ''} ${r.user === me ? 'mine-reaction' : ''}">${r.emoji}</span>`).join('')}</div>`
+      : '';
+
+    return `<div class="msg ${mine ? 'mine' : ''}" data-mid="${esc(m.id)}">
       ${delBtn}
       <div class="msg-content">
         <div class="bubble">${mediaHtml}${textHtml}</div>
+        ${reactionsHtml}
         <div class="time">${new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>
     </div>`;
   }).join('');
+  reactionsFirstLoadDone = true;
   box.scrollTop = box.scrollHeight;
   box.querySelectorAll('.msg-delete-btn').forEach(btn => { btn.onclick = () => deleteMessage(btn.getAttribute('data-id')); });
+  bindReactionTriggers(box, list);
 }
 
 async function deleteMessage(id) {
