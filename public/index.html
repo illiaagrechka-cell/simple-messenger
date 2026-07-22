@@ -293,6 +293,21 @@
   .modal-label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
   .modal-value { font-size: 14px; color: var(--text-main); font-weight: 600; }
   .theme-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 4px; }
+
+  .search-results { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; margin-bottom: 4px; }
+  .search-result-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-radius: 12px; cursor: pointer; background: var(--input-bg);
+  }
+  .search-result-item:hover { background: var(--chip-bg); }
+  .search-result-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
+  .search-empty-hint { font-size: 13px; color: var(--text-muted); padding: 8px 2px; }
+
+  .admin-reports-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+  .admin-report-item { background: var(--input-bg); border-radius: 12px; padding: 10px 12px; }
+  .admin-report-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
+  .admin-report-text { font-size: 13px; color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
+  .admin-report-delete { width: auto; padding: 3px 8px; font-size: 11px; background: var(--danger-bg); color: var(--danger-text); box-shadow: none; flex-shrink: 0; }
   .theme-swatch { padding: 16px 8px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 12px; box-shadow: none; text-shadow: 0 1px 3px rgba(0,0,0,0.4); outline: 2px solid transparent; outline-offset: 2px; }
   .theme-swatch.active { outline: 3px solid var(--text-main); }
 
@@ -382,6 +397,8 @@
       <button id="dots-theme-btn">🎨 Тема оформления</button>
       <button id="dots-favorites-btn">⭐ Избранное</button>
       <button id="dots-night-btn">🌙 Ночная тема</button>
+      <button id="dots-bugreport-btn">🐞 Сообщить о баге</button>
+      <button id="dots-admin-btn" style="display:none;">🛠️ Баг-репорты (админ)</button>
     </div>
   </div>
 </div>
@@ -420,12 +437,13 @@
 
 <div id="search-modal-overlay" class="modal-overlay">
   <div class="modal-box">
-    <div class="modal-title">Написать пользователю</div>
-    <input id="search-peer-input" placeholder="имя пользователя" />
+    <div class="modal-title">Найти пользователя</div>
+    <div class="muted" style="margin-top:-6px;margin-bottom:10px;">Ищем по имени, которое видят все (не по логину).</div>
+    <input id="search-peer-input" placeholder="начните вводить имя..." />
+    <div id="search-results" class="search-results"></div>
     <div id="search-error" class="error"></div>
     <div class="row" style="margin-top:6px;">
-      <button id="search-open-btn">Открыть чат</button>
-      <button id="search-close-btn" class="secondary">Отмена</button>
+      <button id="search-close-btn" class="secondary">Закрыть</button>
     </div>
   </div>
 </div>
@@ -471,6 +489,27 @@
   </div>
 </div>
 
+<div id="bugreport-modal-overlay" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">Сообщить о баге</div>
+    <div class="muted" style="margin-bottom:10px;">Опишите, что пошло не так — это придёт разработчику.</div>
+    <textarea id="bugreport-text" rows="5" placeholder="Например: при открытии чата с фото приложение зависает..." style="width:100%;padding:11px 14px;border:2px solid var(--input-border);border-radius:12px;font-size:15px;background:var(--input-bg);color:var(--text-main);outline:none;resize:vertical;margin-bottom:12px;font-family:inherit;"></textarea>
+    <div id="bugreport-error" class="error"></div>
+    <div class="row">
+      <button id="bugreport-send-btn">Отправить</button>
+      <button id="bugreport-close-btn" class="secondary">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div id="admin-modal-overlay" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-title">Баг-репорты</div>
+    <div id="admin-reports-list" class="admin-reports-list"></div>
+    <button id="admin-close-btn" class="secondary" style="margin-top:12px;">Закрыть</button>
+  </div>
+</div>
+
 <script>
 const root = document.getElementById('root');
 const API = '';
@@ -478,6 +517,7 @@ let token = localStorage.getItem('token') || null;
 let me = localStorage.getItem('me') || null;
 let myNickname = null;
 let myAvatar = null;
+let isAdmin = false;
 let peer = '';
 let currentPeerAlias = null;
 let currentPeerNickname = null;
@@ -556,7 +596,7 @@ async function submitAuth() {
     token = data.token; me = data.username;
     localStorage.setItem('token', token);
     localStorage.setItem('me', me);
-    try { const meInfo = await api('/api/me'); myNickname = meInfo.nickname; myAvatar = meInfo.avatar; } catch (e) { myNickname = null; myAvatar = null; }
+    try { const meInfo = await api('/api/me'); myNickname = meInfo.nickname; myAvatar = meInfo.avatar; isAdmin = !!meInfo.isAdmin; } catch (e) { myNickname = null; myAvatar = null; isAdmin = false; }
     currentPage = 'chats';
     renderApp();
   } catch (e) {
@@ -589,6 +629,7 @@ function logout() {
 function renderApp() {
   setHeaderButtonsVisible(true);
   startHeartbeat();
+  document.getElementById('dots-admin-btn').style.display = isAdmin ? 'flex' : 'none';
   root.innerHTML = `
     <div class="app-shell">
       <nav class="nav-rail" id="nav-rail">
@@ -1077,7 +1118,10 @@ async function sendMessage() {
 
 // ---------- Инициализация ----------
 if (token && me) {
-  api('/api/me').then(data => { myNickname = data.nickname; myAvatar = data.avatar; renderApp(); }).catch(() => {
+  api('/api/me').then(data => {
+    myNickname = data.nickname; myAvatar = data.avatar; isAdmin = !!data.isAdmin;
+    renderApp();
+  }).catch(() => {
     localStorage.removeItem('token'); localStorage.removeItem('me');
     token = null; me = null; renderAuth();
   });
@@ -1092,13 +1136,16 @@ document.getElementById('logo-btn').addEventListener('keydown', e => { if (e.key
 document.getElementById('modal-close-btn').addEventListener('click', () => modalOverlay.classList.remove('open'));
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
 
-// ---------- Модалка поиска пользователя ----------
+// ---------- Модалка поиска пользователя (по видимому имени) ----------
 const searchOverlay = document.getElementById('search-modal-overlay');
 const searchInput = document.getElementById('search-peer-input');
 const searchError = document.getElementById('search-error');
+const searchResultsBox = document.getElementById('search-results');
+let searchDebounceTimer = null;
+
 function openSearchModal() {
   if (!token) return;
-  searchInput.value = ''; searchError.textContent = '';
+  searchInput.value = ''; searchError.textContent = ''; searchResultsBox.innerHTML = '';
   searchOverlay.classList.add('open');
   setTimeout(() => searchInput.focus(), 0);
 }
@@ -1106,19 +1153,35 @@ function closeSearchModal() { searchOverlay.classList.remove('open'); }
 document.getElementById('search-btn').addEventListener('click', openSearchModal);
 document.getElementById('search-close-btn').addEventListener('click', closeSearchModal);
 searchOverlay.addEventListener('click', e => { if (e.target === searchOverlay) closeSearchModal(); });
-async function submitSearch() {
-  const v = searchInput.value.trim().toLowerCase();
-  if (!v) return;
-  if (v === me) { closeSearchModal(); openChat(me); return; }
+
+async function runUserSearch(query) {
+  searchError.textContent = '';
+  if (!query) { searchResultsBox.innerHTML = ''; return; }
   try {
-    const usersList = await api('/api/users');
-    if (!usersList.includes(v)) { searchError.textContent = 'Такой пользователь не найден.'; return; }
-    closeSearchModal();
-    openChat(v);
-  } catch (e) { searchError.textContent = e.message; }
+    const results = await api('/api/users/search?q=' + encodeURIComponent(query));
+    if (!results.length) {
+      searchResultsBox.innerHTML = '<div class="search-empty-hint">Никого не нашлось.</div>';
+      return;
+    }
+    searchResultsBox.innerHTML = results.map(u => `
+      <div class="search-result-item" data-u="${esc(u.username)}">
+        ${avatarHtml(u.avatar, u.nickname || u.username, 'avatar-sm')}
+        <div class="search-result-name">${esc(u.nickname || u.username)}</div>
+      </div>
+    `).join('');
+    searchResultsBox.querySelectorAll('.search-result-item').forEach(el => {
+      el.onclick = () => { closeSearchModal(); openChat(el.getAttribute('data-u')); };
+    });
+  } catch (e) {
+    searchError.textContent = e.message;
+  }
 }
-document.getElementById('search-open-btn').addEventListener('click', submitSearch);
-searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitSearch(); });
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchDebounceTimer);
+  const q = searchInput.value.trim();
+  searchDebounceTimer = setTimeout(() => runUserSearch(q), 250);
+});
 
 // ---------- Меню "три точки" ----------
 const dotsBtn = document.getElementById('dots-btn');
@@ -1215,6 +1278,82 @@ async function saveUsername() {
 }
 document.getElementById('username-save-btn').addEventListener('click', saveUsername);
 usernamePasswordInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveUsername(); });
+
+// ---------- Баг-репорт ----------
+const bugreportOverlay = document.getElementById('bugreport-modal-overlay');
+const bugreportText = document.getElementById('bugreport-text');
+const bugreportError = document.getElementById('bugreport-error');
+
+function openBugreportModal() {
+  dotsDropdown.classList.remove('open');
+  if (!token) return;
+  bugreportText.value = '';
+  bugreportError.textContent = '';
+  bugreportOverlay.classList.add('open');
+  setTimeout(() => bugreportText.focus(), 0);
+}
+function closeBugreportModal() { bugreportOverlay.classList.remove('open'); }
+document.getElementById('dots-bugreport-btn').addEventListener('click', openBugreportModal);
+document.getElementById('bugreport-close-btn').addEventListener('click', closeBugreportModal);
+bugreportOverlay.addEventListener('click', e => { if (e.target === bugreportOverlay) closeBugreportModal(); });
+
+async function sendBugreport() {
+  const text = bugreportText.value.trim();
+  if (!text) { bugreportError.textContent = 'Опишите проблему.'; return; }
+  try {
+    await api('/api/bugreports', { method: 'POST', body: JSON.stringify({ text, userAgent: navigator.userAgent }) });
+    closeBugreportModal();
+    showToast('Спасибо! Баг-репорт отправлен 🐞');
+  } catch (e) {
+    bugreportError.textContent = e.message;
+  }
+}
+document.getElementById('bugreport-send-btn').addEventListener('click', sendBugreport);
+
+// ---------- Админ-панель баг-репортов ----------
+const adminOverlay = document.getElementById('admin-modal-overlay');
+const adminReportsList = document.getElementById('admin-reports-list');
+
+async function openAdminModal() {
+  dotsDropdown.classList.remove('open');
+  if (!isAdmin) return;
+  adminOverlay.classList.add('open');
+  adminReportsList.innerHTML = '<div class="search-empty-hint">Загрузка...</div>';
+  try {
+    const reports = await api('/api/admin/bugreports');
+    renderAdminReports(reports);
+  } catch (e) {
+    adminReportsList.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+function closeAdminModal() { adminOverlay.classList.remove('open'); }
+document.getElementById('dots-admin-btn').addEventListener('click', openAdminModal);
+document.getElementById('admin-close-btn').addEventListener('click', closeAdminModal);
+adminOverlay.addEventListener('click', e => { if (e.target === adminOverlay) closeAdminModal(); });
+
+function renderAdminReports(reports) {
+  if (!reports.length) {
+    adminReportsList.innerHTML = '<div class="search-empty-hint">Пока пусто — багов не найдено 🎉</div>';
+    return;
+  }
+  adminReportsList.innerHTML = reports.map(r => `
+    <div class="admin-report-item" data-id="${esc(r.id)}">
+      <div class="admin-report-meta">
+        <span>от <b>${esc(r.from)}</b> · ${new Date(r.time).toLocaleString()}</span>
+        <button class="admin-report-delete" data-id="${esc(r.id)}">Удалить</button>
+      </div>
+      <div class="admin-report-text">${esc(r.text)}</div>
+    </div>
+  `).join('');
+  adminReportsList.querySelectorAll('.admin-report-delete').forEach(btn => {
+    btn.onclick = async () => {
+      try {
+        await api('/api/admin/bugreports/' + encodeURIComponent(btn.getAttribute('data-id')), { method: 'DELETE' });
+        openAdminModal();
+      } catch (e) { alert(e.message); }
+    };
+  });
+}
 </script>
 </body>
 </html>
