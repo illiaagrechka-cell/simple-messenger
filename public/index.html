@@ -233,6 +233,21 @@
   .conv-alias-btn, .conv-delete-btn { width: auto; padding: 6px 9px; box-shadow: none; font-size: 13px; flex-shrink: 0; }
   .conv-alias-btn { background: var(--chip-bg); color: var(--chip-text); }
   .conv-delete-btn { background: var(--danger-bg); color: var(--danger-text); }
+
+  .unread-badge {
+    min-width: 21px; height: 21px; padding: 0 6px; flex-shrink: 0;
+    border-radius: 999px; background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    color: #fff; font-size: 11px; font-weight: 800; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 8px rgba(120,60,200,0.4);
+  }
+  .unread-badge.unread-badge-pop { animation: unreadBadgePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes unreadBadgePop {
+    0%   { transform: scale(0) rotate(-10deg); opacity: 0; }
+    55%  { transform: scale(1.35) rotate(6deg); opacity: 1; }
+    75%  { transform: scale(0.9); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
   .empty-hint { padding: 16px; color: var(--text-muted); font-size: 13px; }
 
   .chat-view-pane { display: flex; flex-direction: column; background: var(--card-bg); min-height: 0; }
@@ -685,10 +700,13 @@ function stopHeartbeat() {
 function logout() {
   if (pollTimer) clearInterval(pollTimer);
   if (peerStatusTimer) clearInterval(peerStatusTimer);
+  if (convPollTimer) clearInterval(convPollTimer);
   stopHeartbeat();
   localStorage.removeItem('token');
   localStorage.removeItem('me');
   token = null; me = null; peer = ''; myNickname = null;
+  unreadSnapshots = {};
+  convListFirstLoadDone = false;
   renderAuth();
 }
 
@@ -761,6 +779,8 @@ function renderApp() {
   bindNavHandlers();
   goToPage('chats', false);
   loadConversations();
+  if (convPollTimer) clearInterval(convPollTimer);
+  convPollTimer = setInterval(loadConversations, 4000);
   if (peer) openChat(peer); else showChatPlaceholder();
 }
 
@@ -910,6 +930,7 @@ async function loadConversations() {
 
   if (!list.length) {
     box.innerHTML = '<div class="empty-hint">Переписок пока нет — начните новый чат через лупу вверху, или откройте "Избранное" в меню "⋮".</div>';
+    convListFirstLoadDone = true;
     return;
   }
 
@@ -917,6 +938,10 @@ async function loadConversations() {
     const isFavorites = c.username === me;
     const name = isFavorites ? '⭐ Избранное' : (c.alias || c.nickname || c.username);
     const avatar = isFavorites ? null : c.avatar;
+    const unread = isFavorites ? 0 : (c.unread || 0);
+    const badgeIsNew = convListFirstLoadDone && unreadSnapshots[c.username] !== unread && unread > 0;
+    unreadSnapshots[c.username] = unread;
+    const badgeHtml = unread > 0 ? `<span class="unread-badge ${badgeIsNew ? 'unread-badge-pop' : ''}">${unread > 99 ? '99+' : unread}</span>` : '';
     return `
     <div class="conv-item ${c.username === peer ? 'selected' : ''}" data-u="${esc(c.username)}" data-alias="${esc(c.alias || '')}">
       <div class="conv-avatar-wrap" style="position:relative;">${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(avatar, name, 'avatar-sm')}${(!isFavorites && isOnline(c.lastSeen)) ? '<span class="status-dot"></span>' : ''}</div>
@@ -924,12 +949,14 @@ async function loadConversations() {
         <div class="conv-name">${esc(name)}</div>
         <div class="conv-preview">${c.lastFromMe && !isFavorites ? 'Вы: ' : ''}${esc(c.lastText)}</div>
       </div>
+      ${badgeHtml}
       <div class="conv-actions">
         ${isFavorites ? '' : `<button class="conv-alias-btn" data-u="${esc(c.username)}" title="Подписать для себя">✎</button>`}
         <button class="conv-delete-btn" data-u="${esc(c.username)}" title="Удалить чат">✕</button>
       </div>
     </div>`;
   }).join('');
+  convListFirstLoadDone = true;
 
   box.querySelectorAll('.conv-item-main').forEach(el => {
     el.onclick = () => openChat(el.closest('.conv-item').getAttribute('data-u'));
@@ -985,6 +1012,9 @@ function formatLastSeen(lastSeen) {
 }
 
 let peerStatusTimer = null;
+let convPollTimer = null;
+let unreadSnapshots = {};
+let convListFirstLoadDone = false;
 
 // ---------- Реакции на сообщения ----------
 const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
