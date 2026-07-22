@@ -13,8 +13,10 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+
 let db;
-let users, messages, sessions, contacts;
+let users, messages, sessions, contacts, bugreports;
 
 async function start() {
   const client = new MongoClient(MONGODB_URI);
@@ -24,6 +26,7 @@ async function start() {
   messages = db.collection('messages');
   sessions = db.collection('sessions');
   contacts = db.collection('contacts');
+  bugreports = db.collection('bugreports');
 
   // Индексы для скорости и уникальности имён пользователей.
   await users.createIndex({ username: 1 }, { unique: true });
@@ -31,6 +34,7 @@ async function start() {
   await messages.createIndex({ id: 1 }, { unique: true });
   await sessions.createIndex({ token: 1 }, { unique: true });
   await contacts.createIndex({ owner: 1, contact: 1 }, { unique: true });
+  await bugreports.createIndex({ time: -1 });
 
   app.listen(PORT, () => {
     console.log(`Мессенджер запущен: http://localhost:${PORT}`);
@@ -128,7 +132,13 @@ app.post('/api/login', async (req, res) => {
 // --- Проверка токена (для автоматического входа при открытии страницы) ---
 app.get('/api/me', requireAuth, async (req, res) => {
   const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, lastSeen: 1, _id: 0 } });
-  res.json({ username: req.username, nickname: (user && user.nickname) || null, avatar: (user && user.avatar) || null, lastSeen: (user && user.lastSeen) || null });
+  res.json({
+    username: req.username,
+    nickname: (user && user.nickname) || null,
+    avatar: (user && user.avatar) || null,
+    lastSeen: (user && user.lastSeen) || null,
+    isAdmin: !!ADMIN_USERNAME && req.username === ADMIN_USERNAME
+  });
 });
 
 // --- "Пульс": обновляет отметку "был(а) в сети только что" ---
@@ -256,10 +266,22 @@ app.patch('/api/contacts/:contact', requireAuth, async (req, res) => {
   res.json({ contact, alias: clean });
 });
 
-// --- Список всех пользователей (чтобы было видно, кому можно писать) ---
-app.get('/api/users', requireAuth, async (req, res) => {
-  const list = await users.find({ username: { $ne: req.username } }).project({ username: 1, _id: 0 }).toArray();
-  res.json(list.map(u => u.username));
+// --- Поиск пользователей по видимому имени (нику), с запасным вариантом по логину ---
+app.get('/api/users/search', requireAuth, async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  if (!q) return res.json([]);
+
+  const all = await users.find({ username: { $ne: req.username } })
+    .project({ username: 1, nickname: 1, avatar: 1, _id: 0 })
+    .toArray();
+
+  const results = all.filter(u => {
+    const nick = (u.nickname || '').toLowerCase();
+    const uname = u.username.toLowerCase();
+    return nick.includes(q) || uname.includes(q);
+  }).slice(0, 25);
+
+  res.json(results);
 });
 
 // --- Список чатов: с кем уже была переписка, отсортировано по последнему сообщению ---
@@ -382,6 +404,45 @@ app.delete('/api/conversations/:withUser', requireAuth, async (req, res) => {
     ]
   });
   res.json({ deletedWith: other });
+});
+
+// --- Отправка баг-репорта ---
+app.post('/api/bugreports', requireAuth, async (req, res) => {
+  const { text } = req.body || {};
+  const clean = (text || '').trim();
+  if (!clean) {
+    return res.status(400).json({ error: 'Опишите проблему перед отправкой.' });
+  }
+  if (clean.length > 3000) {
+    return res.status(400).json({ error: 'Слишком длинное описание (максимум 3000 символов).' });
+  }
+  const report = {
+    id: makeId(),
+    from: req.username,
+    text: clean,
+    time: Date.now(),
+    userAgent: (req.body && req.body.userAgent) ? String(req.body.userAgent).slice(0, 300) : null
+  };
+  await bugreports.insertOne(report);
+  res.json({ ok: true });
+});
+
+// --- Просмотр баг-репортов (только для админа) ---
+app.get('/api/admin/bugreports', requireAuth, async (req, res) => {
+  if (!ADMIN_USERNAME || req.username !== ADMIN_USERNAME) {
+    return res.status(403).json({ error: 'Доступ только для администратора.' });
+  }
+  const list = await bugreports.find({}).sort({ time: -1 }).project({ _id: 0 }).toArray();
+  res.json(list);
+});
+
+// --- Удаление баг-репорта (только для админа) ---
+app.delete('/api/admin/bugreports/:id', requireAuth, async (req, res) => {
+  if (!ADMIN_USERNAME || req.username !== ADMIN_USERNAME) {
+    return res.status(403).json({ error: 'Доступ только для администратора.' });
+  }
+  await bugreports.deleteOne({ id: req.params.id });
+  res.json({ deleted: req.params.id });
 });
 
 start().catch(err => {
