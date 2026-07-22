@@ -380,6 +380,41 @@ app.get('/api/messages/:withUser', requireAuth, async (req, res) => {
   res.json(thread);
 });
 
+// --- Реакции на сообщение (эмодзи) — доступно и автору, и получателю ---
+const ALLOWED_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
+app.post('/api/messages/:id/reaction', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { emoji } = req.body || {};
+
+    if (emoji !== null && !ALLOWED_REACTIONS.includes(emoji)) {
+      return res.status(400).json({ error: 'Недопустимая реакция.' });
+    }
+
+    const msg = await messages.findOne({ id });
+    if (!msg) {
+      return res.status(404).json({ error: 'Сообщение не найдено.' });
+    }
+    if (msg.from !== req.username && msg.to !== req.username) {
+      return res.status(403).json({ error: 'Нет доступа к этому сообщению.' });
+    }
+
+    const existing = Array.isArray(msg.reactions) ? msg.reactions : [];
+    const prev = existing.find(r => r.user === req.username);
+    const reactions = existing.filter(r => r.user !== req.username);
+    // Повторный клик по той же реакции — снимает её; иначе ставит/заменяет.
+    if (!prev || prev.emoji !== emoji) {
+      reactions.push({ user: req.username, emoji });
+    }
+
+    await messages.updateOne({ id }, { $set: { reactions } });
+    res.json({ id, reactions });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Ошибка сервера при установке реакции.' });
+  }
+});
+
 // --- Удаление одного сообщения (для всех) — может только автор сообщения ---
 app.delete('/api/messages/single/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
