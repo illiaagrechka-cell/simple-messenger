@@ -548,10 +548,25 @@ app.get('/api/admin/users-count', requireAuth, requireAdmin, async (req, res) =>
 // --- Полный список всех зарегистрированных пользователей (с необязательным поиском) ---
 app.get('/api/admin/users/list', requireAuth, requireAdmin, async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
-  const all = await users.find({})
-    .project({ username: 1, nickname: 1, avatar: 1, verified: 1, fake: 1, banned: 1, frozenUntil: 1, createdAt: 1, lastSeen: 1, _id: 0 })
-    .sort({ createdAt: -1 })
-    .toArray();
+
+  // У части старых аккаунтов может не быть поля createdAt (зарегистрированы раньше,
+  // чем это поле стало сохраняться). Чтобы такие пользователи не терялись и не проваливались
+  // из списка, при отсутствии createdAt берём дату из самого _id (в нём всегда "зашито" время создания документа).
+  const all = await users.aggregate([
+    {
+      $addFields: {
+        _effectiveCreatedAt: { $ifNull: ['$createdAt', { $toLong: { $toDate: '$_id' } }] }
+      }
+    },
+    { $sort: { _effectiveCreatedAt: -1 } },
+    {
+      $project: {
+        username: 1, nickname: 1, avatar: 1, verified: 1, fake: 1, banned: 1, frozenUntil: 1,
+        createdAt: '$_effectiveCreatedAt', lastSeen: 1, _id: 0
+      }
+    }
+  ]).toArray();
+
   const filtered = q
     ? all.filter(u => u.username.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q))
     : all;
