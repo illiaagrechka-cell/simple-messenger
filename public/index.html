@@ -223,6 +223,15 @@
     border-radius: 50%; background: #2ecc71; border: 2px solid var(--card-bg);
   }
   .chat-status-text { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .badge-verified {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; background: #3b82f6; color: #fff;
+    font-size: 10px; font-weight: 900; margin-left: 5px; vertical-align: middle;
+  }
+  .badge-fake {
+    display: inline-block; font-size: 10px; font-weight: 800; color: var(--danger-text);
+    background: var(--danger-bg); padding: 1px 6px; border-radius: 8px; margin-left: 5px; vertical-align: middle;
+  }
   .conv-item { align-items: center; }
   .conv-avatar-wrap { flex-shrink: 0; }
   .avatar-edit-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -390,6 +399,24 @@
   .admin-report-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: flex; justify-content: space-between; gap: 8px; }
   .admin-report-text { font-size: 13px; color: var(--text-main); white-space: pre-wrap; word-break: break-word; }
   .admin-report-delete { width: auto; padding: 3px 8px; font-size: 11px; background: var(--danger-bg); color: var(--danger-text); box-shadow: none; flex-shrink: 0; }
+
+  .admin-user-card { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--input-border); }
+  .admin-user-stats { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+  .admin-status-banned { color: var(--danger-text); font-weight: 700; }
+  .admin-status-frozen { color: #d97706; font-weight: 700; }
+  .admin-actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .admin-actions-grid button { padding: 9px 8px; font-size: 12.5px; }
+  .admin-actions-grid button.full-width { grid-column: 1 / -1; }
+  .admin-danger-btn { background: linear-gradient(135deg, #d6336c, #ff6f91) !important; }
+  .admin-freeze-row { display: flex; gap: 6px; margin-bottom: 10px; }
+  .admin-freeze-row input { margin-bottom: 0; }
+  .admin-freeze-row button { width: auto; padding: 9px 14px; font-size: 12.5px; white-space: nowrap; }
+  .admin-note-area {
+    width: 100%; padding: 10px 12px; border: 2px solid var(--input-border); border-radius: 12px;
+    font-size: 13px; background: var(--input-bg); color: var(--text-main); outline: none;
+    resize: vertical; font-family: inherit; margin-bottom: 8px;
+  }
+
   .theme-swatch { padding: 16px 8px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 12px; box-shadow: none; text-shadow: 0 1px 3px rgba(0,0,0,0.4); outline: 2px solid transparent; outline-offset: 2px; }
   .theme-swatch.active { outline: 3px solid var(--text-main); }
 
@@ -481,6 +508,7 @@
       <button id="dots-night-btn">🌙 Ночная тема</button>
       <button id="dots-bugreport-btn">🐞 Сообщить о баге</button>
       <button id="dots-admin-btn" style="display:none;">🛠️ Баг-репорты (админ)</button>
+      <button id="dots-adminpanel-btn" style="display:none;">👑 Админ-панель</button>
     </div>
   </div>
 </div>
@@ -592,6 +620,16 @@
   </div>
 </div>
 
+<div id="adminpanel-modal-overlay" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-title">👑 Админ-панель</div>
+    <input id="adminpanel-search-input" placeholder="Ник или логин пользователя..." />
+    <div id="adminpanel-search-results" class="search-results"></div>
+    <div id="adminpanel-detail"></div>
+    <button id="adminpanel-close-btn" class="secondary" style="margin-top:12px;">Закрыть</button>
+  </div>
+</div>
+
 <script>
 const root = document.getElementById('root');
 const API = '';
@@ -611,12 +649,23 @@ let lastNonDarkTheme = localStorage.getItem('lastNonDarkTheme') || 'pink';
 
 function esc(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+let forcedLogoutInProgress = false;
 async function api(path, options = {}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(API + path, Object.assign({}, options, { headers }));
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Ошибка запроса');
+  if (!res.ok) {
+    if ((res.status === 401 || res.status === 403) && token && !forcedLogoutInProgress) {
+      const msg = data.error || '';
+      if (/заблокирован|заморожен|Не авторизован/.test(msg)) {
+        forcedLogoutInProgress = true;
+        logout();
+        showToast(msg);
+      }
+    }
+    throw new Error(data.error || 'Ошибка запроса');
+  }
   return data;
 }
 
@@ -678,6 +727,7 @@ async function submitAuth() {
     token = data.token; me = data.username;
     localStorage.setItem('token', token);
     localStorage.setItem('me', me);
+    forcedLogoutInProgress = false;
     try { const meInfo = await api('/api/me'); myNickname = meInfo.nickname; myAvatar = meInfo.avatar; isAdmin = !!meInfo.isAdmin; } catch (e) { myNickname = null; myAvatar = null; isAdmin = false; }
     currentPage = 'chats';
     renderApp();
@@ -715,6 +765,7 @@ function renderApp() {
   setHeaderButtonsVisible(true);
   startHeartbeat();
   document.getElementById('dots-admin-btn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('dots-adminpanel-btn').style.display = isAdmin ? 'flex' : 'none';
   root.innerHTML = `
     <div class="app-shell">
       <nav class="nav-rail" id="nav-rail">
@@ -922,6 +973,13 @@ function avatarHtml(avatarUrl, name, sizeClass) {
   return `<div class="avatar ${sizeClass}">${esc(letter)}</div>`;
 }
 
+function nameBadgesHtml(verified, fake) {
+  let out = '';
+  if (verified) out += '<span class="badge-verified" title="Верифицирован">✔</span>';
+  if (fake) out += '<span class="badge-fake" title="Помечен как фейк">⚠ фейк</span>';
+  return out;
+}
+
 async function loadConversations() {
   const box = document.getElementById('conv-list');
   if (!box) return;
@@ -946,7 +1004,7 @@ async function loadConversations() {
     <div class="conv-item ${c.username === peer ? 'selected' : ''}" data-u="${esc(c.username)}" data-alias="${esc(c.alias || '')}">
       <div class="conv-avatar-wrap" style="position:relative;">${isFavorites ? '<div class="avatar avatar-sm">⭐</div>' : avatarHtml(avatar, name, 'avatar-sm')}${(!isFavorites && isOnline(c.lastSeen)) ? '<span class="status-dot"></span>' : ''}</div>
       <div class="conv-item-main">
-        <div class="conv-name">${esc(name)}</div>
+        <div class="conv-name">${esc(name)}${isFavorites ? '' : nameBadgesHtml(c.verified, c.fake)}</div>
         <div class="conv-preview">${c.lastFromMe && !isFavorites ? 'Вы: ' : ''}${esc(c.lastText)}</div>
       </div>
       ${badgeHtml}
@@ -1141,6 +1199,8 @@ async function openChat(username) {
   let displayName;
   let peerAvatar = null;
   let peerLastSeen = null;
+  let peerVerified = false;
+  let peerFake = false;
   currentPeerAlias = null; currentPeerNickname = null;
 
   if (isFavorites) {
@@ -1155,6 +1215,8 @@ async function openChat(username) {
       currentPeerAlias = contact.alias;
       peerAvatar = profile.avatar;
       peerLastSeen = profile.lastSeen;
+      peerVerified = !!profile.verified;
+      peerFake = !!profile.fake;
       displayName = currentPeerAlias || currentPeerNickname || peer;
     } catch (e) {
       pane.innerHTML = `<div class="chat-placeholder">${esc(e.message)}</div>`;
@@ -1172,7 +1234,7 @@ async function openChat(username) {
         ${(!isFavorites && isOnline(peerLastSeen)) ? '<span class="status-dot" id="chat-status-dot"></span>' : ''}
       </div>
       <div style="flex:1;min-width:0;">
-        <div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b></div>
+        <div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Чат с <b id="chat-peer-name" style="color:var(--text-main);">${esc(displayName)}</b><span id="chat-peer-badges">${isFavorites ? '' : nameBadgesHtml(peerVerified, peerFake)}</span></div>
         ${isFavorites ? '' : `<div class="chat-status-text" id="chat-status-text">${esc(formatLastSeen(peerLastSeen))}</div>`}
       </div>
       ${isFavorites ? '' : '<button class="chat-alias-btn" id="chat-alias-btn">✎ подпись</button>'}
@@ -1385,7 +1447,7 @@ async function runUserSearch(query) {
     searchResultsBox.innerHTML = results.map(u => `
       <div class="search-result-item" data-u="${esc(u.username)}">
         ${avatarHtml(u.avatar, u.nickname || u.username, 'avatar-sm')}
-        <div class="search-result-name">${esc(u.nickname || u.username)}</div>
+        <div class="search-result-name">${esc(u.nickname || u.username)}${nameBadgesHtml(u.verified, u.fake)}</div>
       </div>
     `).join('');
     searchResultsBox.querySelectorAll('.search-result-item').forEach(el => {
@@ -1572,6 +1634,172 @@ function renderAdminReports(reports) {
       } catch (e) { alert(e.message); }
     };
   });
+}
+
+// ---------- Админ-панель: управление пользователями ----------
+const adminpanelOverlay = document.getElementById('adminpanel-modal-overlay');
+const adminpanelSearchInput = document.getElementById('adminpanel-search-input');
+const adminpanelResults = document.getElementById('adminpanel-search-results');
+const adminpanelDetail = document.getElementById('adminpanel-detail');
+let adminpanelDebounceTimer = null;
+
+function openAdminPanel() {
+  dotsDropdown.classList.remove('open');
+  if (!isAdmin) return;
+  adminpanelSearchInput.value = '';
+  adminpanelResults.innerHTML = '';
+  adminpanelDetail.innerHTML = '';
+  adminpanelOverlay.classList.add('open');
+  setTimeout(() => adminpanelSearchInput.focus(), 0);
+}
+function closeAdminPanel() { adminpanelOverlay.classList.remove('open'); }
+document.getElementById('dots-adminpanel-btn').addEventListener('click', openAdminPanel);
+document.getElementById('adminpanel-close-btn').addEventListener('click', closeAdminPanel);
+adminpanelOverlay.addEventListener('click', e => { if (e.target === adminpanelOverlay) closeAdminPanel(); });
+
+adminpanelSearchInput.addEventListener('input', () => {
+  clearTimeout(adminpanelDebounceTimer);
+  const q = adminpanelSearchInput.value.trim();
+  adminpanelDebounceTimer = setTimeout(() => runAdminUserSearch(q), 250);
+});
+
+async function runAdminUserSearch(query) {
+  if (!query) { adminpanelResults.innerHTML = ''; return; }
+  try {
+    const results = await api('/api/admin/users/search?q=' + encodeURIComponent(query));
+    if (!results.length) {
+      adminpanelResults.innerHTML = '<div class="search-empty-hint">Никого не нашлось.</div>';
+      return;
+    }
+    adminpanelResults.innerHTML = results.map(u => {
+      const name = u.nickname || u.username;
+      const statusBits = [];
+      if (u.banned) statusBits.push('🚫');
+      if (u.frozenUntil && u.frozenUntil > Date.now()) statusBits.push('🧊');
+      return `
+      <div class="search-result-item" data-u="${esc(u.username)}">
+        ${avatarHtml(u.avatar, name, 'avatar-sm')}
+        <div class="search-result-name">${esc(name)}${nameBadgesHtml(u.verified, u.fake)} ${statusBits.join(' ')}</div>
+      </div>`;
+    }).join('');
+    adminpanelResults.querySelectorAll('.search-result-item').forEach(el => {
+      el.onclick = () => loadAdminUserDetail(el.getAttribute('data-u'));
+    });
+  } catch (e) {
+    adminpanelResults.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+async function loadAdminUserDetail(username) {
+  adminpanelDetail.innerHTML = '<div class="search-empty-hint">Загрузка...</div>';
+  try {
+    const u = await api('/api/admin/users/' + encodeURIComponent(username));
+    renderAdminUserDetail(u);
+  } catch (e) {
+    adminpanelDetail.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+function renderAdminUserDetail(u) {
+  const name = u.nickname || u.username;
+  const joined = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+  const lastSeenText = u.lastSeen ? new Date(u.lastSeen).toLocaleString() : '—';
+
+  adminpanelDetail.innerHTML = `
+    <div class="admin-user-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        ${avatarHtml(u.avatar, name, 'avatar-md')}
+        <div>
+          <div style="font-weight:800;">${esc(name)}${nameBadgesHtml(u.verified, u.fake)}</div>
+          <div class="muted">@${esc(u.username)}</div>
+        </div>
+      </div>
+      <div class="admin-user-stats">
+        <div>Регистрация: ${esc(joined)}</div>
+        <div>Был(а) в сети: ${esc(lastSeenText)}</div>
+        <div>Сообщений: отправлено ${u.stats.messagesSent} · получено ${u.stats.messagesReceived}</div>
+        <div>Активных сессий (вошедших устройств): ${u.stats.activeSessions}</div>
+        ${u.banned ? `<div class="admin-status-banned">🚫 Заблокирован${u.banReason ? ': ' + esc(u.banReason) : ''}</div>` : ''}
+        ${u.isFrozen ? `<div class="admin-status-frozen">🧊 Заморожен до ${new Date(u.frozenUntil).toLocaleString()}</div>` : ''}
+      </div>
+
+      <div class="admin-actions-grid">
+        <button id="admin-verify-btn">${u.verified ? '✔ Снять верификацию' : '✔ Верифицировать'}</button>
+        <button id="admin-fake-btn">${u.fake ? '⚠ Снять пометку' : '⚠ Пометить фейком'}</button>
+        <button id="admin-ban-btn" class="${u.banned ? '' : 'admin-danger-btn'}">${u.banned ? 'Разблокировать' : 'Заблокировать'}</button>
+        <button id="admin-logout-btn">Выйти везде</button>
+        <button id="admin-reset-btn" class="full-width">Сбросить ник и аватар</button>
+        <button id="admin-delete-btn" class="admin-danger-btn full-width">🗑️ Удалить аккаунт навсегда</button>
+      </div>
+
+      <div class="admin-freeze-row">
+        <input type="number" id="admin-freeze-minutes" placeholder="минут" min="1" />
+        <button id="admin-freeze-btn">${u.isFrozen ? 'Обновить заморозку' : '🧊 Заморозить'}</button>
+        ${u.isFrozen ? '<button id="admin-unfreeze-btn" class="secondary">Разморозить</button>' : ''}
+      </div>
+
+      <div class="modal-label" style="margin-bottom:6px;">Заметка администратора (видна только вам)</div>
+      <textarea id="admin-note-text" class="admin-note-area" rows="2">${esc(u.adminNote || '')}</textarea>
+      <button id="admin-note-save-btn" class="secondary">Сохранить заметку</button>
+    </div>
+  `;
+
+  document.getElementById('admin-verify-btn').onclick = async () => {
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/verify`, { method: 'POST', body: JSON.stringify({ value: !u.verified }) }); loadAdminUserDetail(u.username); loadConversations(); }
+    catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-fake-btn').onclick = async () => {
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/fake`, { method: 'POST', body: JSON.stringify({ value: !u.fake }) }); loadAdminUserDetail(u.username); loadConversations(); }
+    catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-ban-btn').onclick = async () => {
+    try {
+      if (u.banned) {
+        await api(`/api/admin/users/${encodeURIComponent(u.username)}/unban`, { method: 'POST' });
+      } else {
+        const reason = prompt('Причина блокировки (можно оставить пустым):') || '';
+        await api(`/api/admin/users/${encodeURIComponent(u.username)}/ban`, { method: 'POST', body: JSON.stringify({ reason }) });
+      }
+      loadAdminUserDetail(u.username);
+    } catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-logout-btn').onclick = async () => {
+    if (!confirm('Выйти на всех устройствах этого пользователя?')) return;
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/logout-all`, { method: 'POST' }); showToast('Готово, сессии сброшены'); loadAdminUserDetail(u.username); }
+    catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-reset-btn').onclick = async () => {
+    if (!confirm('Сбросить ник и аватар этого пользователя?')) return;
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/reset-profile`, { method: 'POST' }); loadAdminUserDetail(u.username); loadConversations(); }
+    catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-delete-btn').onclick = async () => {
+    if (!confirm(`Удалить аккаунт «${u.username}» НАВСЕГДА? Все сообщения и данные будут стёрты безвозвратно.`)) return;
+    if (!confirm('Вы точно уверены? Это действие нельзя отменить.')) return;
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(u.username)}`, { method: 'DELETE' });
+      showToast('Аккаунт удалён');
+      adminpanelDetail.innerHTML = '';
+      adminpanelResults.innerHTML = '';
+      adminpanelSearchInput.value = '';
+    } catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-freeze-btn').onclick = async () => {
+    const minutes = Number(document.getElementById('admin-freeze-minutes').value);
+    if (!minutes || minutes <= 0) { alert('Введите число минут больше нуля.'); return; }
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/freeze`, { method: 'POST', body: JSON.stringify({ minutes }) }); loadAdminUserDetail(u.username); }
+    catch (e) { alert(e.message); }
+  };
+  const unfreezeBtn = document.getElementById('admin-unfreeze-btn');
+  if (unfreezeBtn) unfreezeBtn.onclick = async () => {
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/unfreeze`, { method: 'POST' }); loadAdminUserDetail(u.username); }
+    catch (e) { alert(e.message); }
+  };
+  document.getElementById('admin-note-save-btn').onclick = async () => {
+    const note = document.getElementById('admin-note-text').value;
+    try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/note`, { method: 'PATCH', body: JSON.stringify({ note }) }); showToast('Заметка сохранена'); }
+    catch (e) { alert(e.message); }
+  };
 }
 </script>
 </body>
