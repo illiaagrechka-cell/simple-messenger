@@ -117,6 +117,10 @@
   }
   .dots-dropdown button:hover { background: var(--chip-bg); }
   .dots-dropdown button:active { transform: none; }
+  .menu-count-badge {
+    margin-left: auto; background: var(--chip-bg); color: var(--chip-text);
+    font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px; flex-shrink: 0;
+  }
 
   /* ---------- Общие элементы ---------- */
   input {
@@ -393,6 +397,9 @@
   .search-result-item:hover { background: var(--chip-bg); }
   .search-result-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
   .search-empty-hint { font-size: 13px; color: var(--text-muted); padding: 8px 2px; }
+  .userslist-results { max-height: 60vh; }
+  .userslist-status-icons { font-size: 11px; margin-left: 4px; }
+  .userslist-total-hint { font-size: 12px; color: var(--text-muted); margin: 2px 2px 10px; }
 
   .admin-reports-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
   .admin-report-item { background: var(--input-bg); border-radius: 12px; padding: 10px 12px; }
@@ -509,6 +516,7 @@
       <button id="dots-bugreport-btn">🐞 Сообщить о баге</button>
       <button id="dots-admin-btn" style="display:none;">🛠️ Баг-репорты (админ)</button>
       <button id="dots-adminpanel-btn" style="display:none;">👑 Админ-панель</button>
+      <button id="dots-userslist-btn" style="display:none;">🧑‍🤝‍🧑 Зарегистрированные пользователи <span id="userslist-count-badge" class="menu-count-badge">0</span></button>
     </div>
   </div>
 </div>
@@ -627,6 +635,16 @@
     <div id="adminpanel-search-results" class="search-results"></div>
     <div id="adminpanel-detail"></div>
     <button id="adminpanel-close-btn" class="secondary" style="margin-top:12px;">Закрыть</button>
+  </div>
+</div>
+
+<div id="userslist-modal-overlay" class="modal-overlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-title">🧑‍🤝‍🧑 Зарегистрированные пользователи</div>
+    <div id="userslist-total-hint" class="userslist-total-hint">Всего: —</div>
+    <input id="userslist-search-input" placeholder="Поиск по нику или логину..." />
+    <div id="userslist-results" class="search-results userslist-results"></div>
+    <button id="userslist-close-btn" class="secondary" style="margin-top:12px;">Закрыть</button>
   </div>
 </div>
 
@@ -766,6 +784,8 @@ function renderApp() {
   startHeartbeat();
   document.getElementById('dots-admin-btn').style.display = isAdmin ? 'flex' : 'none';
   document.getElementById('dots-adminpanel-btn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('dots-userslist-btn').style.display = isAdmin ? 'flex' : 'none';
+  if (isAdmin) refreshUsersCountBadge();
   root.innerHTML = `
     <div class="app-shell">
       <nav class="nav-rail" id="nav-rail">
@@ -1800,6 +1820,76 @@ function renderAdminUserDetail(u) {
     try { await api(`/api/admin/users/${encodeURIComponent(u.username)}/note`, { method: 'PATCH', body: JSON.stringify({ note }) }); showToast('Заметка сохранена'); }
     catch (e) { alert(e.message); }
   };
+}
+
+// ---------- Админ-панель: список всех зарегистрированных пользователей ----------
+const userslistOverlay = document.getElementById('userslist-modal-overlay');
+const userslistSearchInput = document.getElementById('userslist-search-input');
+const userslistResults = document.getElementById('userslist-results');
+const userslistTotalHint = document.getElementById('userslist-total-hint');
+const userslistCountBadge = document.getElementById('userslist-count-badge');
+let userslistDebounceTimer = null;
+
+async function refreshUsersCountBadge() {
+  try {
+    const { count } = await api('/api/admin/users-count');
+    userslistCountBadge.textContent = count;
+  } catch (e) { /* тихо игнорируем — не критично для отображения меню */ }
+}
+
+function openUsersList() {
+  dotsDropdown.classList.remove('open');
+  if (!isAdmin) return;
+  userslistSearchInput.value = '';
+  userslistOverlay.classList.add('open');
+  runUsersListLoad('');
+  setTimeout(() => userslistSearchInput.focus(), 0);
+}
+function closeUsersList() { userslistOverlay.classList.remove('open'); }
+document.getElementById('dots-userslist-btn').addEventListener('click', openUsersList);
+document.getElementById('userslist-close-btn').addEventListener('click', closeUsersList);
+userslistOverlay.addEventListener('click', e => { if (e.target === userslistOverlay) closeUsersList(); });
+
+userslistSearchInput.addEventListener('input', () => {
+  clearTimeout(userslistDebounceTimer);
+  const q = userslistSearchInput.value.trim();
+  userslistDebounceTimer = setTimeout(() => runUsersListLoad(q), 250);
+});
+
+async function runUsersListLoad(query) {
+  userslistResults.innerHTML = '<div class="search-empty-hint">Загрузка...</div>';
+  try {
+    const { total, users: list } = await api('/api/admin/users/list?q=' + encodeURIComponent(query));
+    userslistCountBadge.textContent = total;
+    userslistTotalHint.textContent = query
+      ? `Найдено: ${list.length} из ${total}`
+      : `Всего зарегистрировано: ${total}`;
+
+    if (!list.length) {
+      userslistResults.innerHTML = '<div class="search-empty-hint">Никого не нашлось.</div>';
+      return;
+    }
+    userslistResults.innerHTML = list.map(u => {
+      const name = u.nickname || u.username;
+      const statusBits = [];
+      if (u.banned) statusBits.push('🚫');
+      if (u.frozenUntil && u.frozenUntil > Date.now()) statusBits.push('🧊');
+      return `
+      <div class="search-result-item" data-u="${esc(u.username)}">
+        ${avatarHtml(u.avatar, name, 'avatar-sm')}
+        <div class="search-result-name">${esc(name)}${nameBadgesHtml(u.verified, u.fake)}<span class="userslist-status-icons">${statusBits.join(' ')}</span></div>
+      </div>`;
+    }).join('');
+    userslistResults.querySelectorAll('.search-result-item').forEach(el => {
+      el.onclick = () => {
+        closeUsersList();
+        openAdminPanel();
+        loadAdminUserDetail(el.getAttribute('data-u'));
+      };
+    });
+  } catch (e) {
+    userslistResults.innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
 }
 </script>
 </body>
