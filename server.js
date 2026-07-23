@@ -539,6 +539,25 @@ app.get('/api/admin/users/search', requireAuth, requireAdmin, async (req, res) =
   res.json(results);
 });
 
+// --- Общее количество зарегистрированных пользователей (для бейджа в меню) ---
+app.get('/api/admin/users-count', requireAuth, requireAdmin, async (req, res) => {
+  const count = await users.countDocuments({});
+  res.json({ count });
+});
+
+// --- Полный список всех зарегистрированных пользователей (с необязательным поиском) ---
+app.get('/api/admin/users/list', requireAuth, requireAdmin, async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  const all = await users.find({})
+    .project({ username: 1, nickname: 1, avatar: 1, verified: 1, fake: 1, banned: 1, frozenUntil: 1, createdAt: 1, lastSeen: 1, _id: 0 })
+    .sort({ createdAt: -1 })
+    .toArray();
+  const filtered = q
+    ? all.filter(u => u.username.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q))
+    : all;
+  res.json({ total: all.length, users: filtered.slice(0, 500) });
+});
+
 // --- Полная карточка пользователя для админа (профиль + статус + статистика) ---
 app.get('/api/admin/users/:username', requireAuth, requireAdmin, async (req, res) => {
   const uname = (req.params.username || '').trim().toLowerCase();
