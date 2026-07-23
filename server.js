@@ -69,11 +69,28 @@ async function requireAuth(req, res, next) {
     const session = await sessions.findOne({ token });
     if (!session) return res.status(401).json({ error: 'Не авторизован. Войдите заново.' });
 
+    const user = await users.findOne({ username: session.username }, { projection: { banned: 1, banReason: 1, frozenUntil: 1 } });
+    if (!user) return res.status(401).json({ error: 'Не авторизован. Войдите заново.' });
+
+    if (user.banned) {
+      return res.status(403).json({ error: 'Ваш аккаунт заблокирован' + (user.banReason ? `: ${user.banReason}` : '.') });
+    }
+    if (user.frozenUntil && user.frozenUntil > Date.now()) {
+      return res.status(403).json({ error: `Аккаунт временно заморожен до ${new Date(user.frozenUntil).toLocaleString()}.` });
+    }
+
     req.username = session.username;
     next();
   } catch (e) {
     res.status(500).json({ error: 'Ошибка сервера.' });
   }
+}
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_USERNAME || req.username !== ADMIN_USERNAME) {
+    return res.status(403).json({ error: 'Доступ только для администратора.' });
+  }
+  next();
 }
 
 // --- Регистрация ---
@@ -122,6 +139,13 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Неверный пароль.' });
     }
 
+    if (user.banned) {
+      return res.status(403).json({ error: 'Ваш аккаунт заблокирован' + (user.banReason ? `: ${user.banReason}` : '.') });
+    }
+    if (user.frozenUntil && user.frozenUntil > Date.now()) {
+      return res.status(403).json({ error: `Аккаунт временно заморожен до ${new Date(user.frozenUntil).toLocaleString()}.` });
+    }
+
     const token = makeToken();
     await sessions.insertOne({ token, username: uname, createdAt: Date.now() });
     res.json({ token, username: uname });
@@ -133,12 +157,14 @@ app.post('/api/login', async (req, res) => {
 
 // --- Проверка токена (для автоматического входа при открытии страницы) ---
 app.get('/api/me', requireAuth, async (req, res) => {
-  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, lastSeen: 1, _id: 0 } });
+  const user = await users.findOne({ username: req.username }, { projection: { nickname: 1, avatar: 1, lastSeen: 1, verified: 1, fake: 1, _id: 0 } });
   res.json({
     username: req.username,
     nickname: (user && user.nickname) || null,
     avatar: (user && user.avatar) || null,
     lastSeen: (user && user.lastSeen) || null,
+    verified: !!(user && user.verified),
+    fake: !!(user && user.fake),
     isAdmin: !!ADMIN_USERNAME && req.username === ADMIN_USERNAME
   });
 });
@@ -230,9 +256,9 @@ app.patch('/api/profile', requireAuth, async (req, res) => {
 // --- Публичная информация о другом пользователе (ник, аватарка, был(а) в сети) ---
 app.get('/api/profile/:username', requireAuth, async (req, res) => {
   const uname = (req.params.username || '').trim().toLowerCase();
-  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, avatar: 1, lastSeen: 1, _id: 0 } });
+  const user = await users.findOne({ username: uname }, { projection: { username: 1, nickname: 1, avatar: 1, lastSeen: 1, verified: 1, fake: 1, _id: 0 } });
   if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
-  res.json(user);
+  res.json({ ...user, verified: !!user.verified, fake: !!user.fake });
 });
 
 // --- Моя личная подпись (алиас) для конкретного собеседника: чтение ---
@@ -274,14 +300,14 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
   if (!q) return res.json([]);
 
   const all = await users.find({ username: { $ne: req.username } })
-    .project({ username: 1, nickname: 1, avatar: 1, _id: 0 })
+    .project({ username: 1, nickname: 1, avatar: 1, verified: 1, fake: 1, _id: 0 })
     .toArray();
 
   const results = all.filter(u => {
     const nick = (u.nickname || '').toLowerCase();
     const uname = u.username.toLowerCase();
     return nick.includes(q) || uname.includes(q);
-  }).slice(0, 25);
+  }).slice(0, 25).map(u => ({ ...u, verified: !!u.verified, fake: !!u.fake }));
 
   res.json(results);
 });
@@ -314,12 +340,14 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
 
   const partners = Array.from(byPartner.keys());
   const [partnerUsers, myContacts] = await Promise.all([
-    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, avatar: 1, lastSeen: 1, _id: 0 }).toArray(),
+    users.find({ username: { $in: partners } }).project({ username: 1, nickname: 1, avatar: 1, lastSeen: 1, verified: 1, fake: 1, _id: 0 }).toArray(),
     contacts.find({ owner: req.username, contact: { $in: partners } }).project({ contact: 1, alias: 1, _id: 0 }).toArray()
   ]);
   const nicknameByUser = new Map(partnerUsers.map(u => [u.username, u.nickname || null]));
   const avatarByUser = new Map(partnerUsers.map(u => [u.username, u.avatar || null]));
   const lastSeenByUser = new Map(partnerUsers.map(u => [u.username, u.lastSeen || null]));
+  const verifiedByUser = new Map(partnerUsers.map(u => [u.username, !!u.verified]));
+  const fakeByUser = new Map(partnerUsers.map(u => [u.username, !!u.fake]));
   const aliasByUser = new Map(myContacts.map(c => [c.contact, c.alias || null]));
 
   const list = Array.from(byPartner.values()).map(c => ({
@@ -327,6 +355,8 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
     nickname: nicknameByUser.get(c.username) || null,
     avatar: avatarByUser.get(c.username) || null,
     lastSeen: lastSeenByUser.get(c.username) || null,
+    verified: verifiedByUser.get(c.username) || false,
+    fake: fakeByUser.get(c.username) || false,
     alias: aliasByUser.get(c.username) || null,
     unread: unreadByPartner.get(c.username) || 0
   })).sort((a, b) => b.time - a.time);
@@ -485,21 +515,168 @@ app.post('/api/bugreports', requireAuth, async (req, res) => {
 });
 
 // --- Просмотр баг-репортов (только для админа) ---
-app.get('/api/admin/bugreports', requireAuth, async (req, res) => {
-  if (!ADMIN_USERNAME || req.username !== ADMIN_USERNAME) {
-    return res.status(403).json({ error: 'Доступ только для администратора.' });
-  }
+app.get('/api/admin/bugreports', requireAuth, requireAdmin, async (req, res) => {
   const list = await bugreports.find({}).sort({ time: -1 }).project({ _id: 0 }).toArray();
   res.json(list);
 });
 
 // --- Удаление баг-репорта (только для админа) ---
-app.delete('/api/admin/bugreports/:id', requireAuth, async (req, res) => {
-  if (!ADMIN_USERNAME || req.username !== ADMIN_USERNAME) {
-    return res.status(403).json({ error: 'Доступ только для администратора.' });
-  }
+app.delete('/api/admin/bugreports/:id', requireAuth, requireAdmin, async (req, res) => {
   await bugreports.deleteOne({ id: req.params.id });
   res.json({ deleted: req.params.id });
+});
+
+// ==================== АДМИН-ПАНЕЛЬ: УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ====================
+
+// --- Поиск пользователей для админ-панели (по логину или нику) ---
+app.get('/api/admin/users/search', requireAuth, requireAdmin, async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  if (!q) return res.json([]);
+  const all = await users.find({})
+    .project({ username: 1, nickname: 1, avatar: 1, verified: 1, fake: 1, banned: 1, frozenUntil: 1, _id: 0 })
+    .toArray();
+  const results = all.filter(u => u.username.toLowerCase().includes(q) || (u.nickname || '').toLowerCase().includes(q)).slice(0, 30);
+  res.json(results);
+});
+
+// --- Полная карточка пользователя для админа (профиль + статус + статистика) ---
+app.get('/api/admin/users/:username', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname }, { projection: { salt: 0, hash: 0 } });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+
+  const [sentList, receivedList, sessionsList] = await Promise.all([
+    messages.find({ from: uname }).toArray(),
+    messages.find({ to: uname }).toArray(),
+    sessions.find({ username: uname }).toArray()
+  ]);
+
+  res.json({
+    ...user,
+    verified: !!user.verified,
+    fake: !!user.fake,
+    banned: !!user.banned,
+    isFrozen: !!(user.frozenUntil && user.frozenUntil > Date.now()),
+    stats: { messagesSent: sentList.length, messagesReceived: receivedList.length, activeSessions: sessionsList.length }
+  });
+});
+
+function assertNotSelfAdminAction(req, res, targetUsername) {
+  if (ADMIN_USERNAME && targetUsername === ADMIN_USERNAME) {
+    res.status(400).json({ error: 'Нельзя применить это действие к своему аккаунту администратора.' });
+    return true;
+  }
+  return false;
+}
+
+// --- Заблокировать пользователя ---
+app.post('/api/admin/users/:username/ban', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  if (assertNotSelfAdminAction(req, res, uname)) return;
+  const { reason } = req.body || {};
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { banned: true, banReason: (reason || '').trim().slice(0, 300) || null, bannedAt: Date.now() } });
+  await sessions.deleteMany({ username: uname });
+  res.json({ ok: true });
+});
+
+// --- Разблокировать пользователя ---
+app.post('/api/admin/users/:username/unban', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { banned: false, banReason: null } });
+  res.json({ ok: true });
+});
+
+// --- Заморозить аккаунт на N минут ---
+app.post('/api/admin/users/:username/freeze', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  if (assertNotSelfAdminAction(req, res, uname)) return;
+  const { minutes } = req.body || {};
+  const mins = Number(minutes);
+  if (!mins || mins <= 0 || mins > 525600) {
+    return res.status(400).json({ error: 'Укажите корректное число минут (от 1 до 525600).' });
+  }
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  const frozenUntil = Date.now() + mins * 60000;
+  await users.updateOne({ username: uname }, { $set: { frozenUntil } });
+  await sessions.deleteMany({ username: uname });
+  res.json({ ok: true, frozenUntil });
+});
+
+// --- Снять заморозку раньше срока ---
+app.post('/api/admin/users/:username/unfreeze', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { frozenUntil: null } });
+  res.json({ ok: true });
+});
+
+// --- Переключить галочку верификации ---
+app.post('/api/admin/users/:username/verify', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const { value } = req.body || {};
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { verified: !!value } });
+  res.json({ ok: true, verified: !!value });
+});
+
+// --- Переключить пометку "фейк" ---
+app.post('/api/admin/users/:username/fake', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const { value } = req.body || {};
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { fake: !!value } });
+  res.json({ ok: true, fake: !!value });
+});
+
+// --- Принудительный выход со всех устройств ---
+app.post('/api/admin/users/:username/logout-all', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  const result = await sessions.deleteMany({ username: uname });
+  res.json({ ok: true, sessionsRemoved: result.deletedCount });
+});
+
+// --- Сбросить (очистить) ник и/или аватарку пользователя — модерация неприемлемого контента ---
+app.post('/api/admin/users/:username/reset-profile', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { nickname: null, avatar: null } });
+  res.json({ ok: true });
+});
+
+// --- Заметка администратора о пользователе (видна только админу) ---
+app.patch('/api/admin/users/:username/note', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  const { note } = req.body || {};
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+  await users.updateOne({ username: uname }, { $set: { adminNote: (note || '').trim().slice(0, 1000) || null } });
+  res.json({ ok: true });
+});
+
+// --- Полное удаление аккаунта (необратимо) ---
+app.delete('/api/admin/users/:username', requireAuth, requireAdmin, async (req, res) => {
+  const uname = (req.params.username || '').trim().toLowerCase();
+  if (assertNotSelfAdminAction(req, res, uname)) return;
+  const user = await users.findOne({ username: uname });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден.' });
+
+  await users.deleteOne({ username: uname });
+  await messages.deleteMany({ $or: [{ from: uname }, { to: uname }] });
+  await sessions.deleteMany({ username: uname });
+  await contacts.deleteMany({ $or: [{ owner: uname }, { contact: uname }] });
+
+  res.json({ ok: true });
 });
 
 start().catch(err => {
